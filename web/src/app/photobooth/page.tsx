@@ -228,7 +228,7 @@ export default function PhotoboothKiosk() {
       setPaymentData({
         paymentUrl: data.paymentUrl,
         invoiceNumber: data.invoiceNumber,
-        amount: data.amount || 5000,
+        amount: data.amount || 1,
       });
     } catch (err: any) {
       setPaymentError(err.message || 'Koneksi ke gateway pembayaran gagal');
@@ -850,7 +850,7 @@ export default function PhotoboothKiosk() {
             className="bg-white/10 backdrop-blur-md border border-white/30 p-10 rounded-3xl mb-12 max-w-2xl"
           >
             <p className="text-3xl text-white font-bold leading-relaxed mb-8">
-              Silahkan bayar ke panitia sebesar <span className="text-yellow-400 text-4xl">Rp 5.000</span>
+              Silahkan bayar ke panitia sebesar <span className="text-yellow-400 text-4xl">Rp 1</span>
             </p>
             <p className="text-xl text-white/80 mb-8">
               Panitia akan memasukkan kode akses di bawah ini untuk melanjutkan:
