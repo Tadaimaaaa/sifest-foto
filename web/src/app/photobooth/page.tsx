@@ -480,7 +480,8 @@ export default function PhotoboothKiosk() {
   // Result State
   if (!isCompletedDismissed && session && session.status === 'completed') {
     const downloadToken = (session as any).downloadToken;
-    const qrUrl = (publicBaseUrl && downloadToken) ? `${publicBaseUrl}/photo/${downloadToken}` : null;
+    const activeBaseUrl = publicBaseUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+    const qrUrl = (activeBaseUrl && downloadToken) ? `${activeBaseUrl}/photo/${downloadToken}` : null;
 
     return (
       <main className="w-screen h-screen flex flex-col items-center justify-center overflow-hidden select-none relative font-sans">

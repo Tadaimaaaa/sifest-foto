@@ -9,7 +9,8 @@
     "lint": "next lint",
     "test:compositor": "tsx scripts/test-compositor.ts",
     "test:queue": "tsx scripts/test-queue.ts",
-    "test:print": "tsx scripts/test-print-queue.ts"
+    "test:print": "tsx scripts/test-print-queue.ts",
+    "tunnel": "cloudflared tunnel --url http://localhost:3000"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
