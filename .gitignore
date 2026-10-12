@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Next.js Build
+.next/
+web/.next/
+out/
+web/out/
+build/
+web/build/
+
+# Storage & Session Photos (Privasi data pengunjung)
+storage/sessions/*
+!storage/sessions/.gitkeep
+
+# Environment variables & Local config
+.env
+.env.local
+.env*.local
+web/.env
+web/.env.local
+camera-service/.env
+
+# Logs & Debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# OS & Editors
+.DS_Store
+Thumbs.db
+*.tmp
+.vscode/
+.idea/
