@@ -35,8 +35,10 @@ app.prepare().then(() => {
 
   const sessionManager = new SessionManager(broadcast);
 
-  // Expose session manager globally for API routes to access
+  // Expose session manager and socket server globally for API routes to access
   (global as any).sessionManager = sessionManager;
+  (global as any).io = io;
+  (global as any).broadcast = broadcast;
 
   io.on('connection', (socket) => {
     console.log('[Socket] Client connected:', socket.id);

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Banknote, ArrowLeft, Camera, Sparkles } from 'lucide-react';
+import { QrCode, Banknote, ArrowLeft, Camera, Sparkles, CheckCircle2, Loader2, ExternalLink } from 'lucide-react';
 
 const WebcamMirror = ({ isCapturing }: { isCapturing?: boolean }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -147,12 +147,22 @@ const TemplateCard = ({
 
 export default function PhotoboothKiosk() {
   const { socket, isConnected, session, countdown, isCapturing, isProcessing, sessionError, capturedPhotos, resetSession } = useSocket();
-  const [step, setStep] = useState<'welcome' | 'payment' | 'cash_verification' | 'template'>('welcome');
+  const [step, setStep] = useState<'welcome' | 'payment' | 'qris_payment' | 'cash_verification' | 'template'>('welcome');
   const [templateSelection, setTemplateSelection] = useState<string | null>(null);
   const [accessCode, setAccessCode] = useState('');
   const [isCompletedDismissed, setIsCompletedDismissed] = useState(false);
   const [finalImageError, setFinalImageError] = useState(false);
   const [templateOverlayError, setTemplateOverlayError] = useState(false);
+
+  // DOKU QRIS Payment State
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentData, setPaymentData] = useState<{
+    paymentUrl: string;
+    invoiceNumber: string;
+    amount: number;
+  } | null>(null);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const [isStarting, setIsStarting] = useState(false);
   const [printStatus, setPrintStatus] = useState<'IDLE'|'PENDING'|'PRINTING'|'COMPLETED'|'FAILED'>('IDLE');
@@ -165,6 +175,68 @@ export default function PhotoboothKiosk() {
     }
   }, [session]);
 
+  const handlePaymentSuccess = () => {
+    setPaymentSuccess(true);
+    setTimeout(() => {
+      setStep('template');
+      setPaymentSuccess(false);
+      setPaymentData(null);
+    }, 1500);
+  };
+
+  // Listen to payment webhook via Socket.io and poll status fallback
+  useEffect(() => {
+    if (step !== 'qris_payment' || !paymentData?.invoiceNumber || paymentSuccess) return;
+
+    const onPaymentDone = (data: any) => {
+      if (!data?.invoiceNumber || data.invoiceNumber === paymentData.invoiceNumber) {
+        handlePaymentSuccess();
+      }
+    };
+
+    socket?.on('payment:success', onPaymentDone);
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/payment/status/${paymentData.invoiceNumber}`);
+        const data = await res.json();
+        if (data.status === 'SUCCESS') {
+          handlePaymentSuccess();
+        }
+      } catch (err) {
+        // silent fallback
+      }
+    }, 2500);
+
+    return () => {
+      socket?.off('payment:success', onPaymentDone);
+      clearInterval(pollInterval);
+    };
+  }, [step, paymentData, paymentSuccess, socket]);
+
+  const startQrisPayment = async () => {
+    setStep('qris_payment');
+    setPaymentLoading(true);
+    setPaymentError(null);
+    setPaymentSuccess(false);
+    try {
+      const res = await fetch('/api/payment/create', { method: 'POST' });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Gagal membuat transaksi DOKU');
+      }
+      setPaymentData({
+        paymentUrl: data.paymentUrl,
+        invoiceNumber: data.invoiceNumber,
+        amount: data.amount || 5000,
+      });
+    } catch (err: any) {
+      setPaymentError(err.message || 'Koneksi ke gateway pembayaran gagal');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   const handleMulaiClick = () => {
     setStep('payment');
   };
@@ -173,7 +245,7 @@ export default function PhotoboothKiosk() {
     if (method === 'cash') {
       setStep('cash_verification');
     } else {
-      setStep('template');
+      startQrisPayment();
     }
   };
 
@@ -656,6 +728,107 @@ export default function PhotoboothKiosk() {
           >
             <ArrowLeft size={28} />
             KEMBALI
+          </motion.button>
+        </div>
+      )}
+
+      {step === 'qris_payment' && (
+        <div className="flex flex-col items-center w-full max-w-[90vw] z-10">
+          <motion.h1 
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="text-5xl font-black text-white mb-8 tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.5)] flex items-center gap-4"
+          >
+            PEMBAYARAN DOKU / QRIS
+          </motion.h1>
+
+          <div className="bg-white/10 backdrop-blur-md border-2 border-white/40 p-10 rounded-[3rem] shadow-2xl flex flex-col md:flex-row items-center gap-10 max-w-4xl mb-10">
+            {paymentLoading && (
+              <div className="flex flex-col items-center justify-center p-16 w-full min-h-[350px]">
+                <Loader2 size={64} className="text-yellow-400 animate-spin mb-6" />
+                <p className="text-3xl font-bold text-white tracking-wide">Menyiapkan QR Pembayaran...</p>
+                <p className="text-xl text-sky-200 mt-2">Menghubungkan ke server DOKU</p>
+              </div>
+            )}
+
+            {paymentError && (
+              <div className="flex flex-col items-center justify-center p-12 text-center w-full">
+                <p className="text-2xl font-bold text-red-300 mb-6">{paymentError}</p>
+                <button
+                  onClick={startQrisPayment}
+                  className="bg-yellow-400 text-blue-900 font-black px-8 py-4 rounded-2xl text-xl shadow-lg hover:bg-yellow-300 transition-all"
+                >
+                  Coba Lagi
+                </button>
+              </div>
+            )}
+
+            {paymentSuccess && (
+              <div className="flex flex-col items-center justify-center p-16 text-center w-full">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', damping: 10 }}
+                >
+                  <CheckCircle2 size={100} className="text-green-400 mb-6 drop-shadow-[0_0_20px_rgba(74,222,128,0.8)]" />
+                </motion.div>
+                <h2 className="text-5xl font-black text-white mb-4">PEMBAYARAN BERHASIL! 🎉</h2>
+                <p className="text-2xl text-yellow-300 font-bold">Mengalihkan ke pemilihan template...</p>
+              </div>
+            )}
+
+            {!paymentLoading && !paymentError && !paymentSuccess && paymentData && (
+              <>
+                <div className="bg-white p-6 rounded-3xl shadow-2xl flex flex-col items-center border-4 border-slate-100">
+                  <QRCodeSVG value={paymentData.paymentUrl} size={250} level="M" />
+                  <span className="text-slate-400 font-mono text-xs mt-3 tracking-wider">
+                    {paymentData.invoiceNumber}
+                  </span>
+                </div>
+
+                <div className="flex flex-col items-start text-left max-w-md">
+                  <div className="inline-flex items-center gap-2 bg-yellow-400/20 border border-yellow-300/40 text-yellow-300 px-4 py-2 rounded-full font-bold text-lg mb-4">
+                    <span>⚡ TOTAL PEMBAYARAN</span>
+                  </div>
+                  
+                  <div className="text-5xl font-black text-yellow-400 mb-6 drop-shadow-md">
+                    Rp {paymentData.amount.toLocaleString('id-ID')}
+                  </div>
+
+                  <div className="flex items-center gap-3 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 px-4 py-2 rounded-xl mb-6">
+                    <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span className="font-semibold text-lg">Menunggu Pembayaran (Otomatis)</span>
+                  </div>
+
+                  <p className="text-sky-100 text-lg leading-relaxed mb-6">
+                    Scan QR ini dengan kamera HP / aplikasi <strong>m-Banking</strong> (BCA, Mandiri, BRI, BNI) atau <strong>E-Wallet</strong> (GoPay, OVO, Dana, ShopeePay).
+                  </p>
+
+                  <a 
+                    href={paymentData.paymentUrl} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 text-sky-200 hover:text-white underline text-sm"
+                  >
+                    Buka halaman pembayaran DOKU <ExternalLink size={16} />
+                  </a>
+                </div>
+              </>
+            )}
+          </div>
+
+          <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => {
+              setStep('payment');
+              setPaymentData(null);
+              setPaymentError(null);
+            }}
+            className="flex items-center gap-3 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/50 text-white px-12 py-4 rounded-full text-2xl font-bold transition-all shadow-lg"
+          >
+            <ArrowLeft size={28} />
+            BATAL / KEMBALI
           </motion.button>
         </div>
       )}
