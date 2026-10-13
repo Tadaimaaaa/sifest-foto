@@ -791,11 +791,16 @@ export default function PhotoboothKiosk() {
 
             {!paymentLoading && !paymentError && !paymentSuccess && paymentData && (
               <div className="flex flex-col items-center w-full">
-                {/* Container scaled so the full DOKU QRIS is visible without scrolling */}
-                <div className="w-[430px] h-[590px] bg-white rounded-3xl overflow-hidden shadow-2xl border-4 border-white/80 relative flex justify-center">
+                {/* Container cropped to show only Order Summary and QR Code */}
+                <div className="w-[440px] h-[515px] bg-white rounded-3xl overflow-hidden shadow-2xl border-4 border-white/80 relative flex justify-center">
                   <iframe
                     src={paymentData.paymentUrl}
-                    className="w-[530px] h-[750px] border-0 origin-top transform scale-[0.78] shrink-0"
+                    className="w-[500px] h-[820px] border-0 shrink-0"
+                    style={{
+                      marginTop: '-225px',
+                      transform: 'scale(0.88)',
+                      transformOrigin: 'top center',
+                    }}
                     title="DOKU QRIS Payment"
                     allow="payment"
                     scrolling="no"
