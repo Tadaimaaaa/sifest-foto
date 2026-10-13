@@ -571,10 +571,10 @@ export default function PhotoboothKiosk() {
       <main className="w-screen h-screen flex flex-col items-center justify-center overflow-hidden select-none relative font-sans">
         <Background />
         
-        <div className="flex flex-row gap-16 items-center justify-center w-full max-w-[90vw] h-[85vh] z-10">
+        <div className="flex flex-col md:flex-row gap-6 md:gap-16 items-center justify-center w-full max-w-[95vw] h-full max-h-[88vh] z-10">
           
           {/* Photo Preview (2x6 proportion layout) */}
-          <div className="h-full bg-white p-4 rounded-xl shadow-2xl transform -rotate-2">
+          <div className="h-[55vh] md:h-full bg-white p-3 md:p-4 rounded-xl shadow-2xl transform -rotate-1 md:-rotate-2 shrink-0">
             {!finalImageError ? (
               <img 
                 src={`/api/image/${session.id}/final?t=${Date.now()}`} 
@@ -583,40 +583,40 @@ export default function PhotoboothKiosk() {
                 onError={() => setFinalImageError(true)}
               />
             ) : (
-              <div className="h-full w-[250px] flex items-center justify-center text-slate-400 font-bold text-center p-8">
+              <div className="h-full w-[200px] md:w-[250px] flex items-center justify-center text-slate-400 font-bold text-center p-4 md:p-8">
                 Gagal memuat preview foto
               </div>
             )}
           </div>
 
-          <div className="flex flex-col items-start max-w-2xl bg-white/20 p-12 rounded-[3rem] backdrop-blur-md border-4 border-white/50 shadow-2xl">
-            <h1 className="text-7xl font-black text-yellow-300 mb-6 drop-shadow-lg">
+          <div className="flex flex-col items-start max-w-xl md:max-w-2xl bg-white/20 p-6 md:p-12 rounded-[2rem] md:rounded-[3rem] backdrop-blur-md border-2 md:border-4 border-white/50 shadow-2xl">
+            <h1 className="text-4xl md:text-7xl font-black text-yellow-300 mb-3 md:mb-6 drop-shadow-lg">
               KEREN BANGET! 🎉
             </h1>
             
             {qrUrl ? (
-              <div className="flex gap-8 mb-12 items-center bg-white/10 p-6 rounded-3xl border-2 border-white/30">
-                <div className="bg-white p-4 rounded-2xl shadow-xl">
-                  <QRCodeSVG value={qrUrl} size={150} level="M" />
+              <div className="flex gap-4 md:gap-8 mb-6 md:mb-12 items-center bg-white/10 p-4 md:p-6 rounded-2xl md:rounded-3xl border-2 border-white/30">
+                <div className="bg-white p-3 md:p-4 rounded-xl md:rounded-2xl shadow-xl shrink-0">
+                  <QRCodeSVG value={qrUrl} size={110} className="md:w-[150px] md:h-[150px]" level="M" />
                 </div>
                 <div>
-                  <h3 className="text-3xl font-bold text-white mb-2">Scan untuk Download!</h3>
-                  <p className="text-sky-100 text-lg leading-relaxed">
+                  <h3 className="text-xl md:text-3xl font-bold text-white mb-1 md:mb-2">Scan untuk Download!</h3>
+                  <p className="text-sky-100 text-sm md:text-lg leading-relaxed">
                     Arahkan kamera HP kamu ke QR Code ini untuk menyimpan hasil foto kamu (Gratis!). Tautan hanya berlaku 1 jam.
                   </p>
                 </div>
               </div>
             ) : (
-              <p className="text-3xl text-white font-bold mb-12 leading-relaxed">
+              <p className="text-xl md:text-3xl text-white font-bold mb-6 md:mb-12 leading-relaxed">
                 Foto kamu berhasil disimpan! (Fitur sinkronisasi QR Cloud sedang menunggu konfigurasi panitia).
               </p>
             )}
 
-            <div className="flex gap-6 w-full mb-8">
+            <div className="flex gap-4 md:gap-6 w-full mb-4 md:mb-8">
               <button 
                 onClick={handlePrint}
                 disabled={printStatus !== 'IDLE' && printStatus !== 'FAILED'}
-                className={`flex-1 border-4 px-8 py-6 rounded-3xl text-3xl font-black shadow-xl transition-all transform ${
+                className={`flex-1 border-2 md:border-4 px-4 md:px-8 py-3 md:py-6 rounded-2xl md:rounded-3xl text-lg md:text-3xl font-black shadow-xl transition-all transform ${
                   printStatus === 'IDLE' || printStatus === 'FAILED'
                     ? 'bg-gradient-to-b from-emerald-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 text-white border-emerald-300 hover:scale-105 active:scale-95'
                     : 'bg-slate-500/50 text-white border-slate-400 cursor-not-allowed opacity-80'
@@ -632,7 +632,7 @@ export default function PhotoboothKiosk() {
 
             <button 
               onClick={resetSelection}
-              className="w-full bg-sky-500 hover:bg-sky-400 text-white border-4 border-sky-300 px-16 py-6 rounded-full text-4xl font-black shadow-[0_10px_30px_rgba(14,165,233,0.5)] transition-all transform hover:scale-105 active:scale-95"
+              className="w-full bg-sky-500 hover:bg-sky-400 text-white border-2 md:border-4 border-sky-300 px-8 md:px-16 py-3 md:py-6 rounded-full text-xl md:text-4xl font-black shadow-[0_10px_30px_rgba(14,165,233,0.5)] transition-all transform hover:scale-105 active:scale-95"
             >
               SELESAI & KEMBALI
             </button>
@@ -663,17 +663,17 @@ export default function PhotoboothKiosk() {
       )}
 
       {step === 'welcome' && (
-        <div className="flex flex-col items-center z-10 w-full px-8 mt-16">
+        <div className="flex flex-col items-center z-10 w-full px-4 sm:px-8 mt-6 sm:mt-16">
           <motion.div 
             initial={{ y: -50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 1 }}
-            className="flex flex-col items-center mb-16"
+            className="flex flex-col items-center mb-8 sm:mb-16"
           >
-            <h1 className="text-9xl font-black text-white tracking-wide drop-shadow-[0_0_20px_rgba(255,255,255,0.8)]">
+            <h1 className="text-6xl sm:text-8xl md:text-9xl font-black text-white tracking-wide drop-shadow-[0_0_20px_rgba(255,255,255,0.8)]">
               SI FEST
             </h1>
-            <h1 className="text-[10rem] leading-none font-black text-yellow-400 tracking-wide drop-shadow-[0_0_25px_rgba(250,204,21,0.8)] -mt-4">
+            <h1 className="text-7xl sm:text-9xl md:text-[10rem] leading-none font-black text-yellow-400 tracking-wide drop-shadow-[0_0_25px_rgba(250,204,21,0.8)] -mt-2 sm:-mt-4">
               2026
             </h1>
           </motion.div>
@@ -682,10 +682,10 @@ export default function PhotoboothKiosk() {
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.3 }}
-            className="flex items-center gap-4 bg-white/10 backdrop-blur-md border border-white/30 text-white px-10 py-3 rounded-full mb-16"
+            className="flex items-center gap-3 sm:gap-4 bg-white/10 backdrop-blur-md border border-white/30 text-white px-6 sm:px-10 py-2 sm:py-3 rounded-full mb-8 sm:mb-16"
           >
             <span className="text-yellow-400">✦</span>
-            <span className="text-2xl font-bold tracking-[0.2em]">PHOTOBOOTH EXPERIENCE</span>
+            <span className="text-lg sm:text-2xl font-bold tracking-[0.2em]">PHOTOBOOTH EXPERIENCE</span>
             <span className="text-yellow-400">✦</span>
           </motion.div>
           
@@ -693,7 +693,7 @@ export default function PhotoboothKiosk() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleMulaiClick}
-            className="bg-white/20 hover:bg-white/30 backdrop-blur-md border-2 border-white/50 text-white px-24 py-8 rounded-full text-4xl font-black shadow-[0_0_30px_rgba(255,255,255,0.3)] transition-all flex flex-col items-center"
+            className="bg-white/20 hover:bg-white/30 backdrop-blur-md border-2 border-white/50 text-white px-12 sm:px-24 py-5 sm:py-8 rounded-full text-2xl sm:text-4xl font-black shadow-[0_0_30px_rgba(255,255,255,0.3)] transition-all flex flex-col items-center"
           >
             MULAI SEKARANG
           </motion.button>
@@ -705,30 +705,30 @@ export default function PhotoboothKiosk() {
           <motion.h1 
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="text-5xl font-black text-white mb-16 tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]"
+            className="text-3xl sm:text-5xl font-black text-white mb-8 sm:mb-16 tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.5)] text-center"
           >
             PILIH METODE PEMBAYARAN
           </motion.h1>
 
-          <div className="flex gap-12 mb-16">
+          <div className="flex flex-col sm:flex-row gap-6 sm:gap-12 mb-8 sm:mb-16">
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => handlePaymentSelect('qris')}
-              className="flex flex-col items-center justify-center w-[350px] h-[350px] rounded-3xl border border-white/40 bg-white/10 backdrop-blur-md shadow-[0_0_30px_rgba(255,255,255,0.1)] hover:bg-white/20 transition-all group"
+              className="flex flex-col items-center justify-center w-[260px] h-[220px] sm:w-[320px] sm:h-[320px] md:w-[350px] md:h-[350px] rounded-3xl border border-white/40 bg-white/10 backdrop-blur-md shadow-[0_0_30px_rgba(255,255,255,0.1)] hover:bg-white/20 transition-all group"
             >
-              <QrCode size={100} strokeWidth={1.5} className="text-white mb-8 group-hover:drop-shadow-[0_0_15px_rgba(255,255,255,0.8)] transition-all" />
-              <span className="text-3xl font-bold text-white tracking-widest">SCAN QRIS</span>
+              <QrCode size={70} strokeWidth={1.5} className="text-white mb-4 sm:mb-8 group-hover:drop-shadow-[0_0_15px_rgba(255,255,255,0.8)] transition-all sm:w-[100px] sm:h-[100px]" />
+              <span className="text-2xl sm:text-3xl font-bold text-white tracking-widest">SCAN QRIS</span>
             </motion.button>
 
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => handlePaymentSelect('cash')}
-              className="flex flex-col items-center justify-center w-[350px] h-[350px] rounded-3xl border border-white/40 bg-white/10 backdrop-blur-md shadow-[0_0_30px_rgba(255,255,255,0.1)] hover:bg-white/20 transition-all group"
+              className="flex flex-col items-center justify-center w-[260px] h-[220px] sm:w-[320px] sm:h-[320px] md:w-[350px] md:h-[350px] rounded-3xl border border-white/40 bg-white/10 backdrop-blur-md shadow-[0_0_30px_rgba(255,255,255,0.1)] hover:bg-white/20 transition-all group"
             >
-              <Banknote size={100} strokeWidth={1.5} className="text-white mb-8 group-hover:drop-shadow-[0_0_15px_rgba(255,255,255,0.8)] transition-all" />
-              <span className="text-3xl font-bold text-white tracking-widest">CASH</span>
+              <Banknote size={70} strokeWidth={1.5} className="text-white mb-4 sm:mb-8 group-hover:drop-shadow-[0_0_15px_rgba(255,255,255,0.8)] transition-all sm:w-[100px] sm:h-[100px]" />
+              <span className="text-2xl sm:text-3xl font-bold text-white tracking-widest">CASH</span>
             </motion.button>
           </div>
           
@@ -736,9 +736,9 @@ export default function PhotoboothKiosk() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setStep('welcome')}
-            className="flex items-center gap-3 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/50 text-white px-12 py-4 rounded-full text-2xl font-bold transition-all shadow-lg"
+            className="flex items-center gap-3 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/50 text-white px-8 sm:px-12 py-3 sm:py-4 rounded-full text-xl sm:text-2xl font-bold transition-all shadow-lg"
           >
-            <ArrowLeft size={28} />
+            <ArrowLeft size={24} />
             KEMBALI
           </motion.button>
         </div>
@@ -890,12 +890,12 @@ export default function PhotoboothKiosk() {
           <motion.h1 
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="text-5xl font-black text-white mb-12 tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]"
+            className="text-3xl sm:text-5xl font-black text-white mb-6 sm:mb-12 tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.5)] text-center"
           >
             PILIH TEMPLATE KAMU
           </motion.h1>
           
-          <div className="grid grid-cols-4 gap-8 w-full mb-16 px-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8 w-full mb-6 sm:mb-12 px-2 sm:px-4">
             {[
               { id: 'y2k-dreamy', name: 'Y2K Dreamy', icon: '✨', file: '/templates/y2k-dreamy.png?v=2' },
               { id: 'classic', name: 'Classic', icon: '📸', file: '/templates/classic.png?v=2' },
@@ -912,12 +912,12 @@ export default function PhotoboothKiosk() {
             ))}
           </div>
 
-          <div className="flex gap-8 w-full justify-center">
+          <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 w-full justify-center max-w-md sm:max-w-none">
             <motion.button 
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={resetSelection}
-              className="bg-white/10 border border-white/50 text-white px-16 py-6 rounded-full text-2xl font-bold transition-all hover:bg-white/20 backdrop-blur-md"
+              className="bg-white/10 border border-white/50 text-white px-10 sm:px-16 py-4 sm:py-6 rounded-full text-xl sm:text-2xl font-bold transition-all hover:bg-white/20 backdrop-blur-md text-center"
             >
               KEMBALI
             </motion.button>
