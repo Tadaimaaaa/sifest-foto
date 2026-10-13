@@ -745,18 +745,18 @@ export default function PhotoboothKiosk() {
       )}
 
       {step === 'qris_payment' && (
-        <div className="flex flex-col items-center w-full max-w-[90vw] z-10">
+        <div className="flex flex-col items-center w-full max-w-[90vw] z-10 -mt-2">
           <motion.h1 
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="text-5xl font-black text-white mb-8 tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.5)] flex items-center gap-4"
+            className="text-3xl font-black text-white mb-3 tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.5)] flex items-center gap-3"
           >
             PEMBAYARAN DOKU / QRIS
           </motion.h1>
 
-          <div className="bg-white/10 backdrop-blur-md border-2 border-white/40 p-10 rounded-[3rem] shadow-2xl flex flex-col md:flex-row items-center gap-10 max-w-4xl mb-10">
+          <div className="bg-white/15 backdrop-blur-md border-2 border-white/40 p-4 rounded-[2.5rem] shadow-2xl flex flex-col items-center max-w-2xl mb-3">
             {paymentLoading && (
-              <div className="flex flex-col items-center justify-center p-16 w-full min-h-[350px]">
+              <div className="flex flex-col items-center justify-center p-16 w-full min-h-[400px]">
                 <Loader2 size={64} className="text-yellow-400 animate-spin mb-6" />
                 <p className="text-3xl font-bold text-white tracking-wide">Menyiapkan QR Pembayaran...</p>
                 <p className="text-xl text-sky-200 mt-2">Menghubungkan ke server DOKU</p>
@@ -791,17 +791,19 @@ export default function PhotoboothKiosk() {
 
             {!paymentLoading && !paymentError && !paymentSuccess && paymentData && (
               <div className="flex flex-col items-center w-full">
-                <div className="w-full max-w-[480px] h-[560px] bg-white rounded-3xl overflow-hidden shadow-2xl border-4 border-white/60 relative">
+                {/* Container scaled so the full DOKU QRIS is visible without scrolling */}
+                <div className="w-[430px] h-[590px] bg-white rounded-3xl overflow-hidden shadow-2xl border-4 border-white/80 relative flex justify-center">
                   <iframe
                     src={paymentData.paymentUrl}
-                    className="w-full h-full border-0 rounded-2xl"
+                    className="w-[530px] h-[750px] border-0 origin-top transform scale-[0.78] shrink-0"
                     title="DOKU QRIS Payment"
                     allow="payment"
+                    scrolling="no"
                   />
                 </div>
-                <div className="flex items-center gap-3 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 px-6 py-2 rounded-xl mt-4">
-                  <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span className="font-semibold text-lg">Scan QRIS Resmi di atas menggunakan m-Banking / E-Wallet</span>
+                <div className="flex items-center gap-2 bg-emerald-500/25 border border-emerald-400/50 text-emerald-100 px-5 py-2 rounded-xl mt-3 shadow-md">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="font-bold text-sm tracking-wide">Arahkan m-Banking / E-Wallet langsung ke QR Code di atas</span>
                 </div>
               </div>
             )}
@@ -815,9 +817,9 @@ export default function PhotoboothKiosk() {
               setPaymentData(null);
               setPaymentError(null);
             }}
-            className="flex items-center gap-3 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/50 text-white px-12 py-4 rounded-full text-2xl font-bold transition-all shadow-lg"
+            className="flex items-center gap-2 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/50 text-white px-8 py-3 rounded-full text-xl font-bold transition-all shadow-lg"
           >
-            <ArrowLeft size={28} />
+            <ArrowLeft size={22} />
             BATAL / KEMBALI
           </motion.button>
         </div>
