@@ -1,11 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createDokuCheckout } from '@/lib/doku';
 
+import fs from 'fs';
+import path from 'path';
+
 export async function POST(req: NextRequest) {
   try {
-    const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_PHOTO_BASE_URL || 'http://localhost:3000';
-    const callbackUrl = `${origin}/photobooth`;
-    const notifyUrl = `${origin}/api/payment/doku/notify`;
+    const rawOrigin = req.headers.get('origin') || '';
+    let publicUrl = process.env.NEXT_PUBLIC_PHOTO_BASE_URL || '';
+
+    // Check storage/tunnel-url.txt if available
+    try {
+      const storagePath = process.env.STORAGE_PATH || '../storage';
+      const filePath = path.resolve(process.cwd(), storagePath, 'tunnel-url.txt');
+      if (fs.existsSync(filePath)) {
+        const saved = fs.readFileSync(filePath, 'utf-8').trim();
+        if (saved && saved.startsWith('http')) {
+          publicUrl = saved;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // Determine effective public URL for DOKU webhook callback
+    const isLocal = !rawOrigin || rawOrigin.includes('localhost') || rawOrigin.includes('127.0.0.1');
+    const effectivePublicUrl = (isLocal && publicUrl && publicUrl.startsWith('http')) 
+      ? publicUrl 
+      : (rawOrigin || publicUrl || 'http://localhost:3000');
+
+    const callbackUrl = `${effectivePublicUrl}/photobooth`;
+    const notifyUrl = `${effectivePublicUrl}/api/payment/doku/notify`;
 
     const result = await createDokuCheckout({
       callbackUrl,

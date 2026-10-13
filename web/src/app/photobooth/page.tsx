@@ -308,8 +308,20 @@ export default function PhotoboothKiosk() {
     setAccessCode('');
   };
 
-  // Read environment variable for QR code base URL
+  // Dynamic tunnel URL from backend config (saved in storage/tunnel-url.txt)
+  const [tunnelUrl, setTunnelUrl] = useState<string>('');
   const publicBaseUrl = process.env.NEXT_PUBLIC_PHOTO_BASE_URL;
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.tunnelUrl) {
+          setTunnelUrl(data.tunnelUrl);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Background elements for official.sifest.my.id style
   const Background = () => (
@@ -552,7 +564,7 @@ export default function PhotoboothKiosk() {
   // Result State
   if (!isCompletedDismissed && session && session.status === 'completed') {
     const downloadToken = (session as any).downloadToken;
-    const activeBaseUrl = publicBaseUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+    const activeBaseUrl = tunnelUrl || publicBaseUrl || (typeof window !== 'undefined' ? window.location.origin : '');
     const qrUrl = (activeBaseUrl && downloadToken) ? `${activeBaseUrl}/photo/${downloadToken}` : null;
 
     return (
