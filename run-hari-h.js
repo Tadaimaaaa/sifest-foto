@@ -2,6 +2,7 @@ const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 
 console.clear();
 console.log('================================================================');
@@ -37,6 +38,19 @@ function getCloudflaredPath() {
     }
   }
   return null;
+}
+
+// Find local IPv4 address
+function getLocalIp() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
 }
 
 // Check if digiCamControl is running
@@ -121,18 +135,22 @@ async function main() {
           }
         } catch (e) {}
 
+        const localIp = getLocalIp();
+
         console.log('');
         console.log('================================================================');
         console.log('  🎉 SEMUA SISTEM PHOTOBOOTH BERHASIL AKTIF & SIAP DIGUNAKAN!   ');
         console.log('================================================================');
-        console.log(`  🖥️  Layar Photobooth Kiosk : http://localhost:3000/photobooth`);
-        console.log(`  🌐  Link Publik / HP Tamu  : ${liveTunnelUrl}`);
-        console.log(`  💳  Payment Gateway        : DOKU (Otomatis Webhook & QRIS)`);
-        console.log(`  ⚙️  Panel Admin Template   : http://localhost:3000/admin (PIN: 12345)`);
+        console.log(`  📱  LINK BUKA DI IPAD (1 WiFi) : http://${localIp}:3000/photobooth`);
+        console.log(`  🌐  LINK BUKA DI IPAD (Cloud)   : ${liveTunnelUrl}/photobooth`);
+        console.log(`  🖥️  Layar di Laptop             : http://localhost:3000/photobooth`);
+        console.log(`  💳  Payment Gateway             : DOKU (Otomatis Webhook & QRIS)`);
+        console.log(`  ⚙️  Panel Admin Template        : http://localhost:3000/admin (PIN: 12345)`);
         console.log('================================================================');
-        console.log('  Membuka browser ke layar Photobooth...');
+        console.log('  👉 DI IPAD: Buka salah satu link di atas pada browser Safari!');
+        console.log('  👉 Agar Fullscreen di iPad: Tap tombol Share -> Add to Home Screen');
         console.log('  (Tekan Ctrl + C di terminal ini untuk mematikan semua server)');
-        console.log('');
+        console.log('================================================================');
 
         // Open browser
         try {
