@@ -790,42 +790,20 @@ export default function PhotoboothKiosk() {
             )}
 
             {!paymentLoading && !paymentError && !paymentSuccess && paymentData && (
-              <>
-                <div className="bg-white p-6 rounded-3xl shadow-2xl flex flex-col items-center border-4 border-slate-100">
-                  <QRCodeSVG value={paymentData.paymentUrl} size={250} level="M" />
-                  <span className="text-slate-400 font-mono text-xs mt-3 tracking-wider">
-                    {paymentData.invoiceNumber}
-                  </span>
+              <div className="flex flex-col items-center w-full">
+                <div className="w-full max-w-[480px] h-[560px] bg-white rounded-3xl overflow-hidden shadow-2xl border-4 border-white/60 relative">
+                  <iframe
+                    src={paymentData.paymentUrl}
+                    className="w-full h-full border-0 rounded-2xl"
+                    title="DOKU QRIS Payment"
+                    allow="payment"
+                  />
                 </div>
-
-                <div className="flex flex-col items-start text-left max-w-md">
-                  <div className="inline-flex items-center gap-2 bg-yellow-400/20 border border-yellow-300/40 text-yellow-300 px-4 py-2 rounded-full font-bold text-lg mb-4">
-                    <span>⚡ TOTAL PEMBAYARAN</span>
-                  </div>
-                  
-                  <div className="text-5xl font-black text-yellow-400 mb-6 drop-shadow-md">
-                    Rp {paymentData.amount.toLocaleString('id-ID')}
-                  </div>
-
-                  <div className="flex items-center gap-3 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 px-4 py-2 rounded-xl mb-6">
-                    <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span className="font-semibold text-lg">Menunggu Pembayaran (Otomatis)</span>
-                  </div>
-
-                  <p className="text-sky-100 text-lg leading-relaxed mb-6">
-                    Scan QR ini dengan kamera HP / aplikasi <strong>m-Banking</strong> (BCA, Mandiri, BRI, BNI) atau <strong>E-Wallet</strong> (GoPay, OVO, Dana, ShopeePay).
-                  </p>
-
-                  <a 
-                    href={paymentData.paymentUrl} 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 text-sky-200 hover:text-white underline text-sm"
-                  >
-                    Buka halaman pembayaran DOKU <ExternalLink size={16} />
-                  </a>
+                <div className="flex items-center gap-3 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 px-6 py-2 rounded-xl mt-4">
+                  <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="font-semibold text-lg">Scan QRIS Resmi di atas menggunakan m-Banking / E-Wallet</span>
                 </div>
-              </>
+              </div>
             )}
           </div>
 

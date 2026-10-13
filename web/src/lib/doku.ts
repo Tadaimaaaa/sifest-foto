@@ -93,6 +93,7 @@ export async function createDokuCheckout(params: {
     },
     payment: {
       payment_due_date: 30, // 30 minutes
+      payment_method_types: ['QRIS'],
     },
   };
 
