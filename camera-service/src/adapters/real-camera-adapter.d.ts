@@ -4,12 +4,10 @@ export declare class RealCameraAdapter implements CameraAdapter {
     private status;
     connect(): Promise<void>;
     disconnect(): Promise<void>;
+    private checkHttpServer;
     getStatus(): Promise<CameraStatus>;
     isReady(): Promise<boolean>;
     capture(sessionId: string, photoIndex: number): Promise<CaptureResult>;
-    private runCommand;
-    private waitForFile;
-    private verifyJpeg;
     private ensureLiveView;
     private createErrorResult;
 }

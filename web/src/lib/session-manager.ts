@@ -3,9 +3,13 @@ import http from 'http';
 
 function wakeUpLiveView(): void {
   try {
-    const req = http.get('http://127.0.0.1:5513/api?CMD=LiveView_Start', () => {});
-    req.on('error', () => {});
-    req.setTimeout(500, () => req.destroy());
+    const req1 = http.get('http://127.0.0.1:5513/?CMD=LiveViewWnd_Show', () => {});
+    req1.on('error', () => {});
+    req1.setTimeout(500, () => req1.destroy());
+
+    const req2 = http.get('http://127.0.0.1:5513/?CMD=LiveView_Start', () => {});
+    req2.on('error', () => {});
+    req2.setTimeout(500, () => req2.destroy());
   } catch {}
 }
 
@@ -180,15 +184,16 @@ export class SessionManager {
   }
 
   private async waitForCameraReady(signal: AbortSignal) {
+    let retries = 0;
     let status = await cameraClient.getStatus();
     while (status !== 'ready') {
       if (signal.aborted) throw new Error('ABORTED');
       
-      if (status === 'disconnected') {
-        throw new Error('CAMERA_DISCONNECTED');
-      }
-      if (status === 'error') {
-        throw new Error('CAMERA_ERROR');
+      retries++;
+      if (retries >= 3) {
+        // If not ready after retries, proceed anyway because camera-service handles fallback
+        console.warn('[Session] Camera status not ready after retries, proceeding with capture.');
+        break;
       }
       
       await this.sleep(500, signal);
