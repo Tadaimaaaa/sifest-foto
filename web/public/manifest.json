@@ -1,0 +1,17 @@
+{
+  "name": "SI-FEST 2026 Photobooth",
+  "short_name": "Photobooth",
+  "description": "Capture Your SI-FEST Moment",
+  "start_url": "/photobooth",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

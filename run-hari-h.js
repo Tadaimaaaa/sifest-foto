@@ -201,7 +201,9 @@ async function main() {
         console.log(`  ⚙️  Panel Admin Template        : http://${localIp}:3000/photobooth/admin (PIN: 12345)`);
         console.log('================================================================');
         console.log('  👉 DI IPAD: Buka salah satu link di atas pada browser Safari!');
-        console.log('  👉 Agar Fullscreen di iPad: Tap tombol Share -> Add to Home Screen');
+        console.log('  👉 Cara 1 (Termudah): Tap tombol "Layar Penuh" di pojok kanan atas layar iPad!');
+        console.log('  👉 Cara 2 (PWA): Tap Share [↑] -> pilih "Tambah ke Layar Utama" (Add to Home Screen)');
+        console.log('  👉 Cara 3 (Safari): Tap tombol "aA" di samping kolom URL -> "Sembunyikan Bilah Alat"');
         console.log('  (Tekan Ctrl + C di terminal ini untuk mematikan semua server)');
         console.log('================================================================');
 

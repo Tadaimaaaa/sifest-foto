@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Banknote, ArrowLeft, Camera, Sparkles, CheckCircle2, Loader2, Palette, Check, X, Clock, Video, AlertTriangle, SwitchCamera, RefreshCw } from 'lucide-react';
+import { QrCode, Banknote, ArrowLeft, Camera, Sparkles, CheckCircle2, Loader2, Palette, Check, X, Clock, Video, AlertTriangle, SwitchCamera, RefreshCw, Maximize, Minimize } from 'lucide-react';
 
 const PHOTO_FILTERS = [
   {
@@ -371,6 +371,43 @@ export default function PhotoboothKiosk() {
 
   const [isStarting, setIsStarting] = useState(false);
   const [printStatus, setPrintStatus] = useState<'IDLE'|'PENDING'|'PRINTING'|'COMPLETED'|'FAILED'>('IDLE');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const doc = document as any;
+      setIsFullscreen(Boolean(doc.fullscreenElement || doc.webkitFullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = () => {
+    try {
+      const doc = document as any;
+      const docEl = document.documentElement as any;
+
+      if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
+        if (docEl.requestFullscreen) {
+          docEl.requestFullscreen().catch(() => {});
+        } else if (docEl.webkitRequestFullscreen) {
+          docEl.webkitRequestFullscreen();
+        }
+      } else {
+        if (doc.exitFullscreen) {
+          doc.exitFullscreen().catch(() => {});
+        } else if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen();
+        }
+      }
+    } catch (e) {
+      console.warn("Fullscreen toggle error:", e);
+    }
+  };
 
   useEffect(() => {
     if (session && session.status === 'active') {
@@ -1357,6 +1394,17 @@ export default function PhotoboothKiosk() {
             Tutup
           </button>
         </div>
+      )}
+
+      {step === 'welcome' && (
+        <button
+          onClick={toggleFullscreen}
+          className="absolute top-6 right-6 sm:top-8 sm:right-8 z-40 flex items-center gap-2 bg-white/10 hover:bg-white/25 active:scale-95 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-white/20 text-white shadow-lg text-sm sm:text-base font-semibold transition-all cursor-pointer"
+          title={isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh (Fullscreen)"}
+        >
+          {isFullscreen ? <Minimize size={18} className="text-yellow-400" /> : <Maximize size={18} className="text-yellow-400" />}
+          <span>{isFullscreen ? "Kecilkan Layar" : "Layar Penuh"}</span>
+        </button>
       )}
 
       {step === 'welcome' && (
