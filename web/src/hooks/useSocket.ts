@@ -6,6 +6,7 @@ export interface CountdownData {
   photoIndex: number;
   duration: number;
   remaining: number;
+  isRetake?: boolean;
 }
 
 export function useSocket() {
@@ -78,6 +79,7 @@ export function useSocket() {
     socket.on('countdown:start', (data) => {
       setCountdown(data);
       setIsCapturing(false);
+      setIsFilterSelecting(false);
     });
 
     socket.on('countdown:tick', (data) => {
@@ -147,6 +149,13 @@ export function useSocket() {
     }
   };
 
+  const retakePhoto = (photoIndex: number) => {
+    setIsFilterSelecting(false);
+    if (socketRef.current) {
+      socketRef.current.emit('session:retake_photo', { photoIndex });
+    }
+  };
+
   return {
     socket: socketRef.current,
     isConnected,
@@ -156,6 +165,7 @@ export function useSocket() {
     isProcessing,
     isFilterSelecting,
     applyFilter,
+    retakePhoto,
     sessionError,
     capturedPhotos,
     resetSession,

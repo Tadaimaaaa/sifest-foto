@@ -70,6 +70,11 @@ app.prepare().then(() => {
       sessionManager.applyFilter(data?.filterId || 'normal');
     });
 
+    socket.on('session:retake_photo', (data) => {
+      const photoIndex = Number(data?.photoIndex) || 1;
+      sessionManager.retakePhoto(photoIndex);
+    });
+
     socket.on('session:reset', () => {
       sessionManager.resetSession();
     });

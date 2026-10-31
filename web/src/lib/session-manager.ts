@@ -40,6 +40,7 @@ export interface PhotoboothSession {
   photo1Path?: string;
   photo2Path?: string;
   photo3Path?: string;
+  hasRetaken?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,7 +53,7 @@ export class SessionManager {
   private broadcast: EventCallback;
   private abortController: AbortController | null = null;
   private autoResetTimeout: NodeJS.Timeout | null = null;
-  private filterResolver: ((filterId: string) => void) | null = null;
+  private filterOrRetakeResolver: ((action: { action: 'filter'; filterId: string } | { action: 'retake'; photoIndex: number }) => void) | null = null;
 
   constructor(broadcast: EventCallback) {
     this.broadcast = broadcast;
@@ -63,10 +64,24 @@ export class SessionManager {
   }
 
   public applyFilter(filterId: string) {
-    if (this.filterResolver) {
+    if (this.filterOrRetakeResolver) {
       console.log(`[Session] Filter selected by client: ${filterId}`);
-      this.filterResolver(filterId);
-      this.filterResolver = null;
+      this.filterOrRetakeResolver({ action: 'filter', filterId });
+      this.filterOrRetakeResolver = null;
+    }
+  }
+
+  public retakePhoto(photoIndex: number) {
+    if (!this.activeSession || this.activeSession.status !== 'active') return;
+    if (this.activeSession.hasRetaken) {
+      console.warn(`[Session] Retake already used for session ${this.activeSession.id}`);
+      return;
+    }
+    const idx = Math.min(3, Math.max(1, photoIndex));
+    if (this.filterOrRetakeResolver) {
+      console.log(`[Session] Retake requested by client for photo ${idx}`);
+      this.filterOrRetakeResolver({ action: 'retake', photoIndex: idx });
+      this.filterOrRetakeResolver = null;
     }
   }
 
@@ -86,9 +101,9 @@ export class SessionManager {
         clearTimeout(this.autoResetTimeout);
         this.autoResetTimeout = null;
       }
-      if (this.filterResolver) {
-        this.filterResolver('normal');
-        this.filterResolver = null;
+      if (this.filterOrRetakeResolver) {
+        this.filterOrRetakeResolver({ action: 'filter', filterId: 'normal' });
+        this.filterOrRetakeResolver = null;
       }
       this.activeSession = null;
       this.state = 'IDLE';
@@ -149,9 +164,9 @@ export class SessionManager {
       clearTimeout(this.autoResetTimeout);
       this.autoResetTimeout = null;
     }
-    if (this.filterResolver) {
-      this.filterResolver('normal');
-      this.filterResolver = null;
+    if (this.filterOrRetakeResolver) {
+      this.filterOrRetakeResolver({ action: 'filter', filterId: 'normal' });
+      this.filterOrRetakeResolver = null;
     }
     this.activeSession = null;
     this.state = 'IDLE';
@@ -254,28 +269,93 @@ export class SessionManager {
         this.broadcast('session:updated', { session });
       }
 
-      // Enter Filter Selection State
-      this.state = 'FILTER_SELECTION';
-      console.log(`[Session] Waiting for user filter selection...`);
-      this.broadcast('session:filter_selection', { sessionId: session.id });
-      this.broadcast('session:updated', { session });
+      let chosenFilter = 'normal';
 
-      const chosenFilter = await new Promise<string>((resolve) => {
-        this.filterResolver = resolve;
-        // Auto-advance with 'normal' if user doesn't pick in 35 seconds
-        const filterTimer = setTimeout(() => {
-          console.log(`[Session] Filter selection timed out after 35s, defaulting to normal`);
-          resolve('normal');
-        }, 35000);
-        signal.addEventListener('abort', () => {
-          clearTimeout(filterTimer);
-          resolve('normal');
+      while (true) {
+        if (signal.aborted) throw new Error('ABORTED');
+
+        // Enter Filter Selection State
+        this.state = 'FILTER_SELECTION';
+        console.log(`[Session] Waiting for user filter selection or retake (hasRetaken: ${Boolean(session.hasRetaken)})...`);
+        this.broadcast('session:filter_selection', { sessionId: session.id, hasRetaken: Boolean(session.hasRetaken) });
+        this.broadcast('session:updated', { session });
+
+        type FilterOrRetakeAction = 
+          | { action: 'filter'; filterId: string }
+          | { action: 'retake'; photoIndex: number };
+
+        let filterTimer: NodeJS.Timeout | null = null;
+
+        const choice = await new Promise<FilterOrRetakeAction>((resolve) => {
+          this.filterOrRetakeResolver = resolve;
+          // Auto-advance with 'normal' if user doesn't pick in 35 seconds
+          filterTimer = setTimeout(() => {
+            console.log(`[Session] Filter selection timed out after 35s, defaulting to normal`);
+            resolve({ action: 'filter', filterId: 'normal' });
+          }, 35000);
+          signal.addEventListener('abort', () => {
+            if (filterTimer) clearTimeout(filterTimer);
+            resolve({ action: 'filter', filterId: 'normal' });
+          });
         });
-      });
 
-      this.filterResolver = null;
-      session.filterId = chosenFilter;
-      session.updatedAt = new Date().toISOString();
+        if (filterTimer) clearTimeout(filterTimer);
+        this.filterOrRetakeResolver = null;
+
+        if (choice.action === 'retake') {
+          const k = Math.min(3, Math.max(1, choice.photoIndex));
+          console.log(`[Session] Executing single-frame retake for photo ${k}...`);
+          session.hasRetaken = true;
+          session.currentPhoto = k;
+          this.broadcast('session:updated', { session });
+
+          // Wait ready
+          this.state = `PHOTO_${k}_WAIT_READY` as SessionState;
+          console.log(`[Session] Retake: Waiting camera ready`);
+          await this.waitForCameraReady(signal);
+
+          // Countdown
+          this.state = `PHOTO_${k}_COUNTDOWN` as SessionState;
+          console.log(`[Session] Retake: Photo ${k} countdown started`);
+          this.broadcast('countdown:start', { photoIndex: k, duration: 5, remaining: 5, isRetake: true });
+
+          for (let s = 5; s >= 1; s--) {
+            if (signal.aborted) throw new Error('ABORTED');
+            this.broadcast('countdown:tick', { photoIndex: k, remaining: s, isRetake: true });
+            await this.sleep(1000, signal);
+          }
+
+          // Capture
+          this.state = `PHOTO_${k}_CAPTURE` as SessionState;
+          this.broadcast('countdown:capture', { photoIndex: k, isRetake: true });
+          console.log(`[Session] Retake: Photo ${k} captured trigger`);
+
+          const captureResult = await cameraClient.capture(session.id, k);
+          if (!captureResult.success) {
+            throw new Error((captureResult as any).error || 'CAPTURE_FAILED');
+          }
+
+          const photoUrl = `/api/image/${session.id}/photo-${k}?t=${Date.now()}`;
+          console.log(`[Session] Retake: Photo ${k} captured successfully: ${photoUrl}`);
+          this.broadcast('countdown:captured', { photoIndex: k, success: true, photoUrl, isRetake: true });
+
+          if (k === 1) session.photo1Path = captureResult.filePath;
+          if (k === 2) session.photo2Path = captureResult.filePath;
+          if (k === 3) session.photo3Path = captureResult.filePath;
+
+          session.updatedAt = new Date().toISOString();
+          this.broadcast('session:updated', { session });
+
+          await this.sleep(1000, signal);
+          continue; // Re-enter FILTER_SELECTION with updated single photo!
+        }
+
+        // Choice was 'filter'
+        chosenFilter = choice.filterId;
+        session.filterId = chosenFilter;
+        session.updatedAt = new Date().toISOString();
+        break;
+      }
 
       this.state = 'PROCESSING';
       console.log(`[Session] Processing with filter: ${chosenFilter}`);

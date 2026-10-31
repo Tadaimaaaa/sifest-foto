@@ -343,7 +343,8 @@ const DEFAULT_TEMPLATES = [
 ];
 
 export default function PhotoboothKiosk() {
-  const { socket, isConnected, session, countdown, isCapturing, isProcessing, isFilterSelecting, applyFilter, sessionError, capturedPhotos, resetSession } = useSocket();
+  const { socket, isConnected, session, countdown, isCapturing, isProcessing, isFilterSelecting, applyFilter, retakePhoto, sessionError, capturedPhotos, resetSession } = useSocket();
+  const [retakeModalOpen, setRetakeModalOpen] = useState(false);
   const [step, setStep] = useState<'welcome' | 'payment' | 'qris_payment' | 'cash_verification' | 'template'>('welcome');
   const [availableTemplates, setAvailableTemplates] = useState<Array<{ id: string; name: string; icon: string; file: string }>>(DEFAULT_TEMPLATES);
   const [templateSelection, setTemplateSelection] = useState<string | null>(null);
@@ -829,6 +830,7 @@ export default function PhotoboothKiosk() {
       const p1 = capturedPhotos[1] || `/api/image/${session.id}/photo-1`;
       const p2 = capturedPhotos[2] || `/api/image/${session.id}/photo-2`;
       const p3 = capturedPhotos[3] || `/api/image/${session.id}/photo-3`;
+      const hasRetaken = Boolean((session as any)?.hasRetaken);
 
       return (
         <main className="w-screen h-screen flex flex-col items-center justify-center overflow-hidden select-none relative font-sans">
@@ -842,7 +844,9 @@ export default function PhotoboothKiosk() {
               {/* Slot 1 */}
               <div 
                 style={{ top: '24.9%', left: '9.2%', width: '81.6%', height: '21.4%' }}
-                className="absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center"
+                onClick={() => { if (!hasRetaken) setRetakeModalOpen(true); }}
+                className={`absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center transition-all ${!hasRetaken ? 'cursor-pointer hover:ring-2 hover:ring-yellow-400 group/slot1' : ''}`}
+                title={!hasRetaken ? "Klik untuk foto ulang frame ini" : undefined}
               >
                 <img 
                   src={p1} 
@@ -850,12 +854,20 @@ export default function PhotoboothKiosk() {
                   style={{ filter: activeFilterCss }}
                   className="w-full h-full object-cover transition-all duration-300" 
                 />
+                {!hasRetaken && (
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slot1:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-yellow-300 font-bold text-xs bg-black/50">
+                    <RefreshCw size={14} className="animate-spin-slow" />
+                    <span>Ulang Pose 1</span>
+                  </div>
+                )}
               </div>
 
               {/* Slot 2 */}
               <div 
                 style={{ top: '48.2%', left: '9.2%', width: '81.6%', height: '21.4%' }}
-                className="absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center"
+                onClick={() => { if (!hasRetaken) setRetakeModalOpen(true); }}
+                className={`absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center transition-all ${!hasRetaken ? 'cursor-pointer hover:ring-2 hover:ring-yellow-400 group/slot2' : ''}`}
+                title={!hasRetaken ? "Klik untuk foto ulang frame ini" : undefined}
               >
                 <img 
                   src={p2} 
@@ -863,12 +875,20 @@ export default function PhotoboothKiosk() {
                   style={{ filter: activeFilterCss }}
                   className="w-full h-full object-cover transition-all duration-300" 
                 />
+                {!hasRetaken && (
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slot2:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-yellow-300 font-bold text-xs bg-black/50">
+                    <RefreshCw size={14} className="animate-spin-slow" />
+                    <span>Ulang Pose 2</span>
+                  </div>
+                )}
               </div>
 
               {/* Slot 3 */}
               <div 
                 style={{ top: '71.4%', left: '9.2%', width: '81.6%', height: '21.4%' }}
-                className="absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center"
+                onClick={() => { if (!hasRetaken) setRetakeModalOpen(true); }}
+                className={`absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center transition-all ${!hasRetaken ? 'cursor-pointer hover:ring-2 hover:ring-yellow-400 group/slot3' : ''}`}
+                title={!hasRetaken ? "Klik untuk foto ulang frame ini" : undefined}
               >
                 <img 
                   src={p3} 
@@ -876,6 +896,12 @@ export default function PhotoboothKiosk() {
                   style={{ filter: activeFilterCss }}
                   className="w-full h-full object-cover transition-all duration-300" 
                 />
+                {!hasRetaken && (
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/slot3:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-yellow-300 font-bold text-xs bg-black/50">
+                    <RefreshCw size={14} className="animate-spin-slow" />
+                    <span>Ulang Pose 3</span>
+                  </div>
+                )}
               </div>
 
               {/* Template Overlay Frame */}
@@ -937,6 +963,25 @@ export default function PhotoboothKiosk() {
                 })}
               </div>
 
+              {/* Tombol Ulang 1 Foto (Fitur Retake Maks 1 Frame) */}
+              {!hasRetaken ? (
+                <motion.button
+                  type="button"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setRetakeModalOpen(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 mb-4 rounded-2xl bg-white/15 hover:bg-white/25 active:scale-98 border-2 border-dashed border-yellow-300/60 text-white font-bold text-sm md:text-base transition-all shadow-md group cursor-pointer"
+                >
+                  <RefreshCw size={18} className="text-yellow-400 group-hover:rotate-180 transition-transform duration-500" />
+                  <span>Ada Pose Kurang Pas? <span className="text-yellow-300 underline font-black">Ulang 1 Foto</span></span>
+                </motion.button>
+              ) : (
+                <div className="w-full flex items-center justify-center gap-2 py-2 px-4 mb-4 rounded-xl bg-white/5 border border-white/10 text-white/50 text-xs font-semibold">
+                  <Check size={14} className="text-emerald-400" />
+                  <span>Kesempatan ulang 1 foto telah digunakan</span>
+                </div>
+              )}
+
               {/* Timer & Tombol Aksi */}
               <div className="flex items-center justify-between w-full mb-4 px-2">
                 <span className="text-yellow-300 font-bold text-sm md:text-base flex items-center gap-2">
@@ -945,7 +990,7 @@ export default function PhotoboothKiosk() {
                 </span>
                 <button
                   onClick={() => applyFilter('normal')}
-                  className="text-white/60 hover:text-white text-xs underline"
+                  className="text-white/60 hover:text-white text-xs underline cursor-pointer"
                 >
                   Lewati
                 </button>
@@ -955,7 +1000,7 @@ export default function PhotoboothKiosk() {
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => applyFilter(selectedFilter)}
-                className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-blue-950 font-black text-xl md:text-2xl py-4 md:py-5 rounded-2xl md:rounded-3xl shadow-[0_10px_30px_rgba(250,204,21,0.5)] border-2 border-yellow-200 transition-all flex items-center justify-center gap-3"
+                className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-blue-950 font-black text-xl md:text-2xl py-4 md:py-5 rounded-2xl md:rounded-3xl shadow-[0_10px_30px_rgba(250,204,21,0.5)] border-2 border-yellow-200 transition-all flex items-center justify-center gap-3 cursor-pointer"
               >
                 <span>GUNAKAN FILTER INI</span>
                 <CheckCircle2 size={26} />
@@ -963,6 +1008,87 @@ export default function PhotoboothKiosk() {
             </div>
 
           </div>
+
+          {/* Modal Pilih Frame yang Mau Diulang */}
+          <AnimatePresence>
+            {retakeModalOpen && !hasRetaken && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4"
+              >
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                  className="bg-slate-900/95 border-2 md:border-4 border-yellow-400/60 p-6 md:p-8 rounded-[2.5rem] max-w-2xl w-full shadow-[0_0_50px_rgba(250,204,21,0.3)] flex flex-col items-center text-center relative font-sans"
+                >
+                  <button
+                    onClick={() => setRetakeModalOpen(false)}
+                    className="absolute top-5 right-5 text-white/60 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+                  >
+                    <X size={24} />
+                  </button>
+
+                  <div className="flex items-center gap-2 text-yellow-400 mb-2">
+                    <RefreshCw size={28} className="animate-spin-slow" />
+                    <h2 className="text-2xl md:text-4xl font-black text-white">
+                      PILIH 1 POSE UNTUK DIULANG
+                    </h2>
+                  </div>
+                  
+                  <p className="text-white/80 text-sm md:text-base mb-6 max-w-md font-medium">
+                    Kamu memiliki <span className="text-yellow-300 font-black">1 kali kesempatan</span> untuk mengulang salah satu pose fotomu. Pilih pose mana yang ingin kamu foto ulang:
+                  </p>
+
+                  <div className="grid grid-cols-3 gap-3 md:gap-4 w-full mb-6">
+                    {[
+                      { index: 1, url: p1, label: 'Pose 1' },
+                      { index: 2, url: p2, label: 'Pose 2' },
+                      { index: 3, url: p3, label: 'Pose 3' }
+                    ].map((item) => (
+                      <motion.button
+                        key={item.index}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          setRetakeModalOpen(false);
+                          retakePhoto(item.index);
+                        }}
+                        className="group relative flex flex-col items-center p-2.5 rounded-2xl bg-white/10 hover:bg-white/20 border-2 border-white/20 hover:border-yellow-400 transition-all shadow-lg text-left cursor-pointer"
+                      >
+                        <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-black/40 mb-2 relative">
+                          <img 
+                            src={item.url} 
+                            alt={item.label} 
+                            style={{ filter: activeFilterCss }}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                          />
+                          <div className="absolute top-2 left-2 bg-black/70 text-yellow-300 font-mono text-xs px-2 py-0.5 rounded-md font-black">
+                            #{item.index}
+                          </div>
+                        </div>
+                        <span className="font-black text-white text-base md:text-lg group-hover:text-yellow-300 transition-colors">
+                          {item.label}
+                        </span>
+                        <span className="text-xs text-yellow-400 font-bold mt-1 flex items-center gap-1">
+                          <Camera size={13} /> Ulang Pose Ini
+                        </span>
+                      </motion.button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => setRetakeModalOpen(false)}
+                    className="px-6 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    Batal, Tetap Pakai Foto Sekarang
+                  </button>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </main>
       );
     }
@@ -1117,7 +1243,7 @@ export default function PhotoboothKiosk() {
             <div className="absolute top-8 left-8 flex items-center gap-4 z-20">
               <div className="bg-white/20 backdrop-blur-md px-8 py-3 rounded-full border border-white/40 shadow-xl">
                 <span className="text-2xl font-black text-white tracking-widest drop-shadow-md">
-                  FOTO {currentPhotoIndex} DARI 3
+                  {countdown?.isRetake ? `ULANG FOTO ${currentPhotoIndex}` : `FOTO ${currentPhotoIndex} DARI 3`}
                 </span>
               </div>
             </div>
@@ -1142,7 +1268,7 @@ export default function PhotoboothKiosk() {
                     animate={{ y: 0, opacity: 1 }}
                     className="text-5xl md:text-6xl font-black text-yellow-400 drop-shadow-[0_0_30px_rgba(250,204,21,0.9)] mb-2 tracking-widest font-sans"
                   >
-                    BERSIAPLAH!
+                    {countdown?.isRetake ? `ULANG POSE ${countdown.photoIndex}!` : 'BERSIAPLAH!'}
                   </motion.h2>
 
                   <motion.div 
