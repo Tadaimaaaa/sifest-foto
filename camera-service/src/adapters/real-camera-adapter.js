@@ -37,6 +37,7 @@ exports.RealCameraAdapter = void 0;
 const node_child_process_1 = require("node:child_process");
 const fs = __importStar(require("node:fs/promises"));
 const path = __importStar(require("node:path"));
+const http = __importStar(require("node:http"));
 const config_1 = require("../config");
 class RealCameraAdapter {
     status = 'disconnected';
@@ -60,10 +61,57 @@ class RealCameraAdapter {
         console.log('[RealCameraAdapter] Disconnected');
     }
     async getStatus() {
+        if (this.status === 'capturing')
+            return 'capturing';
+        try {
+            // 1. Fast HTTP probe: verify digiCamControl web server is active on port 5513 first (<100ms)
+            const isHttpAlive = await new Promise((resolve) => {
+                const req = http.get('http://127.0.0.1:5513/', { timeout: 300 }, (res) => {
+                    resolve(true);
+                });
+                req.on('error', () => resolve(false));
+                req.on('timeout', () => {
+                    req.destroy();
+                    resolve(false);
+                });
+            });
+            if (!isHttpAlive) {
+                this.status = 'disconnected';
+                return 'disconnected';
+            }
+            // 2. digiCamControl is running, check if camera is connected via remote cmd
+            const isConnected = await new Promise((resolve) => {
+                const child = (0, node_child_process_1.spawn)(config_1.config.digicamcontrolCmdPath, ['/c', 'list', 'cameras'], { windowsHide: true });
+                let out = '';
+                child.stdout?.on('data', d => out += d);
+                child.on('close', () => {
+                    const hasCamera = !out.includes('no camera') && !out.includes('error') && out.includes('["') && !out.includes('[]');
+                    resolve(hasCamera);
+                });
+                child.on('error', () => resolve(false));
+                setTimeout(() => {
+                    try {
+                        child.kill();
+                    }
+                    catch { }
+                    resolve(false);
+                }, 1500);
+            });
+            if (!isConnected) {
+                this.status = 'disconnected';
+            }
+            else {
+                this.status = 'ready';
+            }
+        }
+        catch {
+            this.status = 'disconnected';
+        }
         return this.status;
     }
     async isReady() {
-        return this.status === 'ready';
+        const s = await this.getStatus();
+        return s === 'ready';
     }
     async capture(sessionId, photoIndex) {
         if (this.status !== 'ready') {
@@ -72,7 +120,9 @@ class RealCameraAdapter {
         this.status = 'capturing';
         const startTime = Date.now();
         try {
-            const sessionDir = path.join(config_1.config.storagePath, 'sessions', sessionId, 'original');
+            // Ensure storage path is absolute before using it
+            const absoluteStoragePath = path.resolve(process.cwd(), config_1.config.storagePath);
+            const sessionDir = path.join(absoluteStoragePath, 'sessions', sessionId, 'original');
             await fs.mkdir(sessionDir, { recursive: true });
             const fileName = `photo-${photoIndex}.jpg`;
             const filePath = path.join(sessionDir, fileName);
@@ -90,14 +140,22 @@ class RealCameraAdapter {
             }
             console.log(`[RealCameraAdapter] Capturing ${fileName} to ${filePath}...`);
             // Run digiCamControl remote cmd
-            // Example: CameraControlRemoteCmd.exe /c capture "C:\path\to\photo.jpg"
+            // Example: CameraControlRemoteCmd.exe /clean /c CaptureNoAf "C:\path\to\photo.jpg"
             const commandPath = config_1.config.digicamcontrolCmdPath;
-            const args = ['/c', `capture ${filePath}`];
-            await this.runCommand(commandPath, args, config_1.config.captureTimeoutMs);
+            // We prioritize CaptureNoAf to avoid Canon's autofocus locking shutter (Err 8D01 / 81)
+            try {
+                await this.runCommand(commandPath, ['/clean', '/c', 'CaptureNoAf', filePath], config_1.config.captureTimeoutMs);
+            }
+            catch (cmdErr) {
+                console.warn(`[RealCameraAdapter] CaptureNoAf failed (${cmdErr.message}), trying standard capture...`);
+                await this.runCommand(commandPath, ['/clean', '/c', 'capture', filePath], config_1.config.captureTimeoutMs);
+            }
             // Poll for file to be completely written
             await this.waitForFile(filePath, config_1.config.captureTimeoutMs);
             // Verify JPEG header
             await this.verifyJpeg(filePath);
+            // Re-trigger live view in digiCamControl to ensure mirror returns to live view immediately
+            this.ensureLiveView();
             console.log(`[RealCameraAdapter] Capture successful in ${Date.now() - startTime}ms`);
             this.status = 'ready';
             return {
@@ -115,8 +173,14 @@ class RealCameraAdapter {
                 // Attempt to recover status if camera is still connected. For now we just reset to ready.
                 if (this.status === 'error')
                     this.status = 'ready';
-            }, 5000);
+            }, 3000);
             let errorCode = 'CAMERA_COMMAND_FAILED';
+            if (err.message === 'CAMERA_DISCONNECTED')
+                errorCode = 'CAMERA_DISCONNECTED';
+            if (err.message === 'CANON_AF_FAILED')
+                errorCode = 'CANON_AF_FAILED';
+            if (err.message === 'CANON_ERROR_81')
+                errorCode = 'CANON_ERROR_81';
             if (err.message === 'FILE_ALREADY_EXISTS')
                 errorCode = 'FILE_ALREADY_EXISTS';
             if (err.message === 'TIMEOUT')
@@ -143,8 +207,22 @@ class RealCameraAdapter {
             }, timeoutMs);
             child.on('close', (code) => {
                 clearTimeout(timeoutId);
-                if (code !== 0) {
-                    console.error(`[RealCameraAdapter] Command exited with code ${code}. Stdout: ${stdout.trim()}, Stderr: ${stderr.trim()}`);
+                const out = stdout.trim();
+                if (out.includes('no camera is connected')) {
+                    console.error('[RealCameraAdapter] digiCamControl reports: no camera is connected');
+                    this.status = 'disconnected';
+                    reject(new Error('CAMERA_DISCONNECTED'));
+                }
+                else if (out.includes('Canon error code: 8D01') || out.includes('Canon error code: 81')) {
+                    console.warn(`[RealCameraAdapter] digiCamControl reports Canon autofocus lock / busy: ${out}`);
+                    reject(new Error('CANON_AF_FAILED'));
+                }
+                else if (out.includes('Canon error code') || out.includes(':;response:error') || out.includes('error ')) {
+                    console.error(`[RealCameraAdapter] digiCamControl command error: ${out}`);
+                    reject(new Error(`CAMERA_ERROR: ${out}`));
+                }
+                else if (code !== 0) {
+                    console.error(`[RealCameraAdapter] Command exited with code ${code}. Stdout: ${out}, Stderr: ${stderr.trim()}`);
                     reject(new Error(`COMMAND_FAILED_WITH_CODE_${code}`));
                 }
                 else {
@@ -193,6 +271,14 @@ class RealCameraAdapter {
         finally {
             await fileHandle.close();
         }
+    }
+    ensureLiveView() {
+        try {
+            const req = http.get('http://127.0.0.1:5513/api?CMD=LiveView_Start', () => { });
+            req.on('error', () => { });
+            req.setTimeout(500, () => req.destroy());
+        }
+        catch { }
     }
     createErrorResult(sessionId, photoIndex, errorMsg) {
         return {

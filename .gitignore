@@ -13,6 +13,9 @@ web/build/
 # Storage & Session Photos (Privasi data pengunjung)
 storage/sessions/*
 !storage/sessions/.gitkeep
+storage/*.txt
+storage/*.jpg
+storage/*.db
 
 # Environment variables & Local config
 .env

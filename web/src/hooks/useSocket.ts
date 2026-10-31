@@ -14,6 +14,7 @@ export function useSocket() {
   const [countdown, setCountdown] = useState<CountdownData | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isFilterSelecting, setIsFilterSelecting] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [capturedPhotos, setCapturedPhotos] = useState<{ [index: number]: string }>({});
   
@@ -31,6 +32,7 @@ export function useSocket() {
       setSessionError(null);
       setCountdown(null);
       setIsProcessing(false);
+      setIsFilterSelecting(false);
       setCapturedPhotos({});
     });
 
@@ -39,6 +41,7 @@ export function useSocket() {
       if (!data.session) {
         setCountdown(null);
         setIsProcessing(false);
+        setIsFilterSelecting(false);
         setCapturedPhotos({});
         setSessionError(null);
         return;
@@ -57,6 +60,7 @@ export function useSocket() {
           setSession(null);
           setCountdown(null);
           setIsProcessing(false);
+          setIsFilterSelecting(false);
           setCapturedPhotos({});
         }, 3000);
       }
@@ -66,6 +70,7 @@ export function useSocket() {
       setSession(null);
       setCountdown(null);
       setIsProcessing(false);
+      setIsFilterSelecting(false);
       setCapturedPhotos({});
       setSessionError(null);
     });
@@ -81,6 +86,7 @@ export function useSocket() {
 
     socket.on('countdown:capture', () => {
       setIsCapturing(true);
+      setCountdown(null);
     });
 
     socket.on('countdown:captured', (data: { photoIndex: number; success: boolean; photoUrl?: string }) => {
@@ -91,16 +97,29 @@ export function useSocket() {
       }
     });
 
+    socket.on('session:filter_selection', () => {
+      setIsCapturing(false);
+      setCountdown(null);
+      setIsProcessing(false);
+      setIsFilterSelecting(true);
+    });
+
     socket.on('processing:started', () => {
       setIsProcessing(true);
+      setIsFilterSelecting(false);
     });
 
     socket.on('processing:complete', (data) => {
       setIsProcessing(false);
+      setIsFilterSelecting(false);
       setSession(data.session);
     });
 
     socket.on('session:error', (data) => {
+      setIsCapturing(false);
+      setCountdown(null);
+      setIsProcessing(false);
+      setIsFilterSelecting(false);
       setSessionError(data.error);
     });
 
@@ -113,10 +132,18 @@ export function useSocket() {
     setSession(null);
     setCountdown(null);
     setIsProcessing(false);
+    setIsFilterSelecting(false);
     setCapturedPhotos({});
     setSessionError(null);
     if (socketRef.current) {
       socketRef.current.emit('session:reset');
+    }
+  };
+
+  const applyFilter = (filterId: string) => {
+    setIsFilterSelecting(false);
+    if (socketRef.current) {
+      socketRef.current.emit('session:apply_filter', { filterId });
     }
   };
 
@@ -127,6 +154,8 @@ export function useSocket() {
     countdown,
     isCapturing,
     isProcessing,
+    isFilterSelecting,
+    applyFilter,
     sessionError,
     capturedPhotos,
     resetSession,

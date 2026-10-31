@@ -1,18 +1,63 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Banknote, ArrowLeft, Camera, Sparkles, CheckCircle2, Loader2, ExternalLink } from 'lucide-react';
+import { QrCode, Banknote, ArrowLeft, Camera, Sparkles, CheckCircle2, Loader2, Palette, Check, X, Clock, Video, AlertTriangle, SwitchCamera, RefreshCw } from 'lucide-react';
+
+const PHOTO_FILTERS = [
+  {
+    id: 'normal',
+    name: 'Normal (Asli)',
+    tag: 'Warna Tajam & Natural',
+    icon: '🌟',
+    css: 'none',
+  },
+  {
+    id: 'bw',
+    name: 'Black & White',
+    tag: 'Monokrom Klasik Analog',
+    icon: '🖤',
+    css: 'grayscale(100%) contrast(1.2) brightness(1.05)',
+  },
+  {
+    id: 'vintage',
+    name: 'Warm Vintage',
+    tag: 'Nuansa Hangat Retro',
+    icon: '🎞️',
+    css: 'sepia(45%) contrast(1.1) brightness(1.05) saturate(1.2)',
+  },
+  {
+    id: 'cool',
+    name: 'Cool Cyber',
+    tag: 'Tone Dingin Modern & Sejuk',
+    icon: '❄️',
+    css: 'hue-rotate(185deg) saturate(0.9) contrast(1.08) brightness(1.04)',
+  },
+  {
+    id: 'dreamy',
+    name: 'Soft Glow',
+    tag: 'Pastel Lembut, Cerah & Glowing',
+    icon: '🌸',
+    css: 'brightness(1.12) contrast(0.95) saturate(1.25)',
+  }
+];
 
 const WebcamMirror = ({ isCapturing }: { isCapturing?: boolean }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const selectedDeviceId = 'dslr';
-  const [dslrFailed, setDslrFailed] = useState(false);
-  const [streamKey, setStreamKey] = useState<number>(() => Date.now());
   const imgRef = useRef<HTMLImageElement>(null);
+  const [cameraMode, setCameraMode] = useState<'dslr' | 'webcam'>('dslr');
+  const [dslrConnected, setDslrConnected] = useState<boolean>(false);
+  const [isConnectingDslr, setIsConnectingDslr] = useState<boolean>(true);
+  const [streamKey, setStreamKey] = useState<number>(() => Date.now());
+  const [dslrNotice, setDslrNotice] = useState<string | null>(null);
+  const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [isWebcamLoading, setIsWebcamLoading] = useState<boolean>(false);
+
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const dslrFailCountRef = useRef<number>(0);
 
   // Clean up streaming connection when component unmounts to prevent socket exhaustion
   useEffect(() => {
@@ -24,60 +69,205 @@ const WebcamMirror = ({ isCapturing }: { isCapturing?: boolean }) => {
     };
   }, []);
 
-
-
-  // 2. Mulai streaming webcam laptop jika DSLR tidak dipilih
+  // Enumerate available video input devices (webcams)
   useEffect(() => {
-    if (selectedDeviceId === 'dslr') return;
-    
-    let stream: MediaStream | null = null;
-    const startWebcam = async () => {
+    async function getDevices() {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { deviceId: { exact: selectedDeviceId }, width: 1280, height: 720 } 
-        });
+        if (!navigator?.mediaDevices?.enumerateDevices) return;
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoInputs = devices.filter(d => d.kind === 'videoinput');
+        setAvailableDevices(videoInputs);
+        if (videoInputs.length > 0 && !selectedDeviceId) {
+          setSelectedDeviceId(videoInputs[0].deviceId);
+        }
+      } catch (err) {
+        console.warn("Could not enumerate camera devices:", err);
+      }
+    }
+    getDevices();
+  }, [selectedDeviceId]);
+
+  // Webcam streaming effect
+  useEffect(() => {
+    if (cameraMode !== 'webcam') return;
+
+    let stream: MediaStream | null = null;
+    let isCancelled = false;
+
+    const startWebcam = async () => {
+      setIsWebcamLoading(true);
+      try {
+        const constraints: MediaStreamConstraints = {
+          video: selectedDeviceId
+            ? { deviceId: { exact: selectedDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+            : { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'user' }
+        };
+
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (isCancelled) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
       } catch (err) {
         console.error("Error accessing webcam:", err);
+      } finally {
+        if (!isCancelled) setIsWebcamLoading(false);
       }
     };
+
     startWebcam();
-    
+
     return () => {
-      if (stream) stream.getTracks().forEach(track => track.stop());
+      isCancelled = true;
+      if (stream) stream.getTracks().forEach(t => t.stop());
     };
-  }, [selectedDeviceId]);
+  }, [cameraMode, selectedDeviceId]);
+
+  // Handle retry connect to DSLR
+  const handleTryConnectDslr = () => {
+    setIsConnectingDslr(true);
+    setDslrNotice(null);
+    dslrFailCountRef.current = 0;
+    setCameraMode('dslr');
+    setStreamKey(Date.now());
+  };
+
+  // Switch to next available webcam device
+  const handleSwitchWebcam = () => {
+    if (availableDevices.length <= 1) return;
+    const currentIndex = availableDevices.findIndex(d => d.deviceId === selectedDeviceId);
+    const nextIndex = (currentIndex + 1) % availableDevices.length;
+    setSelectedDeviceId(availableDevices[nextIndex].deviceId);
+  };
 
   return (
-    <div className="w-full h-full relative overflow-hidden rounded-[3rem] border-[12px] border-white/20 shadow-[0_0_50px_rgba(255,255,255,0.2)] bg-black/40 backdrop-blur-sm group">
+    <div className="w-full h-full relative overflow-hidden rounded-[3rem] border-[12px] border-white/20 shadow-[0_0_50px_rgba(255,255,255,0.2)] bg-black/50 backdrop-blur-sm group select-none">
       
       {/* Tampilan Kamera */}
-      {selectedDeviceId === 'dslr' && !dslrFailed ? (
-        <img 
-          ref={imgRef}
-          key={streamKey}
-          src={`/api/camera/live?t=${streamKey}`}
-          alt="DSLR Live View Stream"
-          className="absolute inset-0 w-full h-full object-cover"
-          onError={() => {
-            console.warn("Koneksi stream DSLR terputus, mencoba menyambung ulang...");
-            if (retryTimeoutRef.current) return;
-            retryTimeoutRef.current = setTimeout(() => {
-              retryTimeoutRef.current = null;
-              setStreamKey(Date.now());
-            }, 800);
-          }}
-        />
+      {cameraMode === 'dslr' ? (
+        <>
+          <img 
+            ref={imgRef}
+            key={streamKey}
+            src={`/api/camera/live?t=${streamKey}`}
+            alt="DSLR Live View Stream"
+            className="absolute inset-0 w-full h-full object-cover"
+            onLoad={() => {
+              setDslrConnected(true);
+              setIsConnectingDslr(false);
+              setDslrNotice(null);
+              dslrFailCountRef.current = 0;
+            }}
+            onError={() => {
+              console.warn("Koneksi stream DSLR gagal atau digiCamControl belum aktif.");
+              dslrFailCountRef.current++;
+              
+              if (dslrFailCountRef.current >= 1) {
+                // Auto fallback to Webcam immediately so preview is NEVER blank/stuck!
+                setCameraMode('webcam');
+                setDslrConnected(false);
+                setIsConnectingDslr(false);
+                setDslrNotice("digiCamControl / DSLR tidak terdeteksi di port 5513. Otomatis beralih ke Webcam Laptop.");
+              } else {
+                if (retryTimeoutRef.current) return;
+                retryTimeoutRef.current = setTimeout(() => {
+                  retryTimeoutRef.current = null;
+                  setStreamKey(Date.now());
+                }, 600);
+              }
+            }}
+          />
+
+          {isConnectingDslr && !dslrConnected && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 text-white z-10 gap-3">
+              <Loader2 size={44} className="animate-spin text-yellow-400" />
+              <p className="text-lg font-bold tracking-wide">Menghubungkan DSLR (digiCamControl)...</p>
+              <p className="text-xs text-white/60">Pastikan aplikasi digiCamControl dibuka & port 5513 aktif</p>
+            </div>
+          )}
+        </>
       ) : (
-        <video 
-          ref={videoRef} 
-          autoPlay 
-          playsInline 
-          muted 
-          className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" 
-        />
+        <>
+          <video 
+            ref={videoRef} 
+            autoPlay 
+            playsInline 
+            muted 
+            className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" 
+          />
+          {isWebcamLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 text-white z-10 gap-3">
+              <Loader2 size={44} className="animate-spin text-yellow-400" />
+              <p className="text-lg font-bold tracking-wide">Menyalakan Webcam Laptop...</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Floating Camera Mode & Controls Badge (Top Right) */}
+      <div className="absolute top-6 right-6 z-30 flex items-center gap-2">
+        {cameraMode === 'dslr' ? (
+          <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-white text-xs font-bold shadow-lg">
+            <span className={`w-2.5 h-2.5 rounded-full ${dslrConnected ? 'bg-green-400 animate-pulse' : 'bg-yellow-400 animate-ping'}`} />
+            <span>📷 DSLR (digiCamControl)</span>
+            <button
+              onClick={() => {
+                setCameraMode('webcam');
+                setDslrNotice(null);
+              }}
+              className="ml-2 bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-full text-[11px] transition"
+              title="Ganti ke Webcam Laptop"
+            >
+              Ganti ke Webcam
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-white text-xs font-bold shadow-lg">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
+            <span>📹 Webcam Laptop</span>
+            {availableDevices.length > 1 && (
+              <button
+                onClick={handleSwitchWebcam}
+                className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded-full text-[11px] flex items-center gap-1 transition"
+                title="Ganti Lensa Kamera"
+              >
+                <SwitchCamera size={13} />
+                <span>Ganti</span>
+              </button>
+            )}
+            <button
+              onClick={handleTryConnectDslr}
+              className="ml-1 bg-yellow-400/90 hover:bg-yellow-400 text-blue-950 font-black px-2.5 py-1 rounded-full text-[11px] flex items-center gap-1 transition shadow"
+              title="Coba sambungkan kamera DSLR"
+            >
+              <RefreshCw size={12} className={isConnectingDslr ? 'animate-spin' : ''} />
+              <span>Hubungkan DSLR</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Notification Toast if Fallback Triggered */}
+      {dslrNotice && cameraMode === 'webcam' && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 max-w-[90%] bg-amber-500/95 text-slate-950 font-bold px-5 py-2.5 rounded-2xl shadow-2xl border border-amber-300 flex items-center gap-3 text-xs sm:text-sm animate-fade-in backdrop-blur-md">
+          <AlertTriangle size={18} className="shrink-0 text-slate-950" />
+          <div className="flex flex-col text-left">
+            <span>{dslrNotice}</span>
+            <span className="text-[10px] text-slate-900 font-semibold opacity-90">
+              Tips: Jika memakai DSLR, buka aplikasi <b>digiCamControl</b> di laptop dan pastikan kamera menyala.
+            </span>
+          </div>
+          <button 
+            onClick={() => setDslrNotice(null)}
+            className="ml-auto text-slate-900 hover:text-black font-black text-base px-1"
+          >
+            ✕
+          </button>
+        </div>
       )}
     </div>
   );
@@ -145,14 +335,29 @@ const TemplateCard = ({
   );
 };
 
+const DEFAULT_TEMPLATES = [
+  { id: 'y2k-dreamy', name: 'Y2K Dreamy', icon: '✨', file: '/templates/y2k-dreamy.png?v=2' },
+  { id: 'classic', name: 'Classic', icon: '📸', file: '/templates/classic.png?v=2' },
+  { id: 'futuristic', name: 'Futuristic', icon: '🚀', file: '/templates/futuristic.png?v=2' },
+  { id: 'fun', name: 'Fun', icon: '🎈', file: '/templates/fun.png?v=2' },
+];
+
 export default function PhotoboothKiosk() {
-  const { socket, isConnected, session, countdown, isCapturing, isProcessing, sessionError, capturedPhotos, resetSession } = useSocket();
+  const { socket, isConnected, session, countdown, isCapturing, isProcessing, isFilterSelecting, applyFilter, sessionError, capturedPhotos, resetSession } = useSocket();
   const [step, setStep] = useState<'welcome' | 'payment' | 'qris_payment' | 'cash_verification' | 'template'>('welcome');
+  const [availableTemplates, setAvailableTemplates] = useState<Array<{ id: string; name: string; icon: string; file: string }>>(DEFAULT_TEMPLATES);
   const [templateSelection, setTemplateSelection] = useState<string | null>(null);
   const [accessCode, setAccessCode] = useState('');
   const [isCompletedDismissed, setIsCompletedDismissed] = useState(false);
   const [finalImageError, setFinalImageError] = useState(false);
   const [templateOverlayError, setTemplateOverlayError] = useState(false);
+
+  // Filter Selection State
+  const [selectedFilter, setSelectedFilter] = useState<string>('normal');
+  const [filterTimer, setFilterTimer] = useState<number>(30);
+  const [isChangingFilter, setIsChangingFilter] = useState(false);
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+  const [finalImageKey, setFinalImageKey] = useState<number>(() => Date.now());
 
   // DOKU QRIS Payment State
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -172,8 +377,214 @@ export default function PhotoboothKiosk() {
       setIsCompletedDismissed(false);
       setFinalImageError(false);
       setTemplateOverlayError(false);
+      setSelectedFilter((session as any).filterId || 'normal');
+      setIsStarting(false);
     }
   }, [session]);
+
+  useEffect(() => {
+    if (sessionError) {
+      setIsStarting(false);
+      if (sessionError === 'SESSION_ALREADY_ACTIVE') {
+        resetSession();
+      }
+    }
+  }, [sessionError, resetSession]);
+
+  // Timers per page
+  const [templateTimer, setTemplateTimer] = useState<number>(60);
+  const [paymentTimer, setPaymentTimer] = useState<number>(60);
+  const [cashTimer, setCashTimer] = useState<number>(60);
+  const [qrisTimer, setQrisTimer] = useState<number>(180);
+  const [resultTimer, setResultTimer] = useState<number>(90);
+
+  // Dynamic templates fetching
+  const fetchAvailableTemplates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/templates');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.templates) && data.templates.length > 0) {
+        setAvailableTemplates(
+          data.templates.map((t: any) => ({
+            id: t.id,
+            name: t.name,
+            icon: t.icon,
+            file: t.url || `/templates/${t.id}.png?v=2`,
+          }))
+        );
+      }
+    } catch (e) {
+      console.warn('Failed to fetch dynamic templates, using defaults:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAvailableTemplates();
+  }, [fetchAvailableTemplates]);
+
+  useEffect(() => {
+    if (step === 'template') {
+      fetchAvailableTemplates();
+    }
+  }, [step, fetchAvailableTemplates]);
+
+  const templateSelectionRef = useRef(templateSelection);
+  useEffect(() => {
+    templateSelectionRef.current = templateSelection;
+  }, [templateSelection]);
+
+  // 1. Template selection 60-second countdown (auto-start when timer reaches 0)
+  useEffect(() => {
+    if (step !== 'template') {
+      setTemplateTimer(60);
+      return;
+    }
+
+    if (!templateSelection && availableTemplates.length > 0) {
+      setTemplateSelection(availableTemplates[0].id);
+    }
+
+    if ((session && session.status === 'active') || isStarting) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setTemplateTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          const chosenTemplate = templateSelectionRef.current || availableTemplates[0]?.id || 'y2k-dreamy';
+          handleStartSession(chosenTemplate);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [step, session?.status, isStarting, socket, availableTemplates]);
+
+  // 2. Payment method 60-second inactivity timer (returns to welcome)
+  useEffect(() => {
+    if (step !== 'payment') {
+      setPaymentTimer(60);
+      return;
+    }
+    const timer = setInterval(() => {
+      setPaymentTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setStep('welcome');
+          return 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [step]);
+
+  // 3. Cash verification 60-second timer (returns to payment)
+  useEffect(() => {
+    if (step !== 'cash_verification') {
+      setCashTimer(60);
+      return;
+    }
+    const timer = setInterval(() => {
+      setCashTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setStep('payment');
+          setAccessCode('');
+          return 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [step]);
+
+  // 4. QRIS 180-second validity countdown (returns to payment on timeout)
+  useEffect(() => {
+    if (step !== 'qris_payment' || paymentSuccess) {
+      setQrisTimer(180);
+      return;
+    }
+    const timer = setInterval(() => {
+      setQrisTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setPaymentError('Waktu pembayaran QRIS telah habis. Silakan coba kembali.');
+          setTimeout(() => {
+            setStep('payment');
+            setPaymentData(null);
+            setPaymentError(null);
+          }, 3000);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [step, paymentSuccess]);
+
+  // 5. Result screen 90-second countdown (auto reset session)
+  useEffect(() => {
+    if (!session || session.status !== 'completed' || isCompletedDismissed) {
+      setResultTimer(90);
+      return;
+    }
+    const timer = setInterval(() => {
+      setResultTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          resetSelection();
+          return 90;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [session?.status, isCompletedDismissed]);
+
+  // Countdown timer for interactive filter selection step
+  useEffect(() => {
+    if (!isFilterSelecting) {
+      setFilterTimer(30);
+      return;
+    }
+    const timer = setInterval(() => {
+      setFilterTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          applyFilter(selectedFilter);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isFilterSelecting, selectedFilter, applyFilter]);
+
+  const handleReapplyFilter = async (filterId: string) => {
+    if (!session?.id) return;
+    setIsChangingFilter(true);
+    try {
+      const res = await fetch(`/api/session/${session.id}/filter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filterId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSelectedFilter(filterId);
+        setFinalImageKey(Date.now());
+      }
+    } catch (err) {
+      console.error('Gagal mengganti filter:', err);
+    } finally {
+      setIsChangingFilter(false);
+      setFilterModalOpen(false);
+    }
+  };
 
   const handlePaymentSuccess = () => {
     setPaymentSuccess(true);
@@ -260,12 +671,13 @@ export default function PhotoboothKiosk() {
     }
   };
 
-  const handleStartSession = () => {
-    if (!socket || !templateSelection || isStarting) return;
+  const handleStartSession = (overrideTemplateId?: string) => {
+    if (!socket || isStarting) return;
+    const tpl = overrideTemplateId || templateSelectionRef.current || templateSelection || availableTemplates[0]?.id || 'y2k-dreamy';
     setIsStarting(true);
-    socket.emit('session:start', { templateId: templateSelection });
+    socket.emit('session:start', { templateId: tpl });
     // Reset starting state after a timeout in case of failure without error broadcast
-    setTimeout(() => setIsStarting(false), 2000);
+    setTimeout(() => setIsStarting(false), 3000);
   };
 
   const handlePrint = async () => {
@@ -306,6 +718,11 @@ export default function PhotoboothKiosk() {
     setTemplateSelection(null);
     setPrintStatus('IDLE');
     setAccessCode('');
+    setTemplateTimer(60);
+    setPaymentTimer(60);
+    setCashTimer(60);
+    setQrisTimer(180);
+    setResultTimer(90);
   };
 
   // Dynamic tunnel URL from backend config (saved in storage/tunnel-url.txt)
@@ -368,6 +785,150 @@ export default function PhotoboothKiosk() {
     const currentPhotoIndex = countdown ? countdown.photoIndex : ((session as any).currentPhoto || 1);
     const normalizedTemplateId = (session.templateId || 'y2k-dreamy').toLowerCase().trim().replace(/\s+/g, '-');
     const templateUrl = `/templates/${normalizedTemplateId}.png?v=2`;
+    const activeFilterCss = PHOTO_FILTERS.find(f => f.id === selectedFilter)?.css || 'none';
+
+    // 1. FILTER SELECTION STUDIO (Muncul setelah 3 foto selesai dijepret)
+    if (isFilterSelecting) {
+      const p1 = capturedPhotos[1] || `/api/image/${session.id}/photo-1`;
+      const p2 = capturedPhotos[2] || `/api/image/${session.id}/photo-2`;
+      const p3 = capturedPhotos[3] || `/api/image/${session.id}/photo-3`;
+
+      return (
+        <main className="w-screen h-screen flex flex-col items-center justify-center overflow-hidden select-none relative font-sans">
+          <Background />
+
+          <div className="flex flex-col md:flex-row items-center justify-center w-full h-full max-h-[92vh] p-4 md:p-8 gap-6 md:gap-12 z-10">
+            
+            {/* SISI KIRI: Live Preview Strip dengan filter yang dipilih */}
+            <div className="h-[68vh] md:h-[84vh] aspect-[600/1800] bg-slate-900/50 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.4)] relative overflow-hidden flex flex-col justify-between border-4 border-white/60 shrink-0">
+              
+              {/* Slot 1 */}
+              <div 
+                style={{ top: '24.9%', left: '9.2%', width: '81.6%', height: '21.4%' }}
+                className="absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center"
+              >
+                <img 
+                  src={p1} 
+                  alt="Pose 1" 
+                  style={{ filter: activeFilterCss }}
+                  className="w-full h-full object-cover transition-all duration-300" 
+                />
+              </div>
+
+              {/* Slot 2 */}
+              <div 
+                style={{ top: '48.2%', left: '9.2%', width: '81.6%', height: '21.4%' }}
+                className="absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center"
+              >
+                <img 
+                  src={p2} 
+                  alt="Pose 2" 
+                  style={{ filter: activeFilterCss }}
+                  className="w-full h-full object-cover transition-all duration-300" 
+                />
+              </div>
+
+              {/* Slot 3 */}
+              <div 
+                style={{ top: '71.4%', left: '9.2%', width: '81.6%', height: '21.4%' }}
+                className="absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center"
+              >
+                <img 
+                  src={p3} 
+                  alt="Pose 3" 
+                  style={{ filter: activeFilterCss }}
+                  className="w-full h-full object-cover transition-all duration-300" 
+                />
+              </div>
+
+              {/* Template Overlay Frame */}
+              {!templateOverlayError && (
+                <img 
+                  src={templateUrl} 
+                  alt="Template Frame"
+                  className="absolute inset-0 w-full h-full object-contain pointer-events-none z-10"
+                  onError={() => setTemplateOverlayError(true)}
+                />
+              )}
+            </div>
+
+            {/* SISI KANAN: Panel Pemilihan Filter */}
+            <div className="flex flex-col items-center md:items-start max-w-xl w-full bg-white/20 p-6 md:p-8 rounded-[2.5rem] backdrop-blur-md border-2 md:border-4 border-white/50 shadow-2xl overflow-y-auto max-h-[85vh]">
+              
+              <div className="flex items-center gap-3 mb-2">
+                <Sparkles size={28} className="text-yellow-400 animate-pulse" />
+                <h1 className="text-3xl md:text-5xl font-black text-yellow-300 drop-shadow-md">
+                  PILIH FILTER STRIP
+                </h1>
+              </div>
+              <p className="text-sky-100 text-sm md:text-base mb-6 font-medium">
+                Sentuh filter di bawah untuk melihat preview warna strip fotomu secara instan!
+              </p>
+
+              {/* Daftar Filter */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mb-6">
+                {PHOTO_FILTERS.map((f) => {
+                  const isSelected = selectedFilter === f.id;
+                  return (
+                    <motion.button
+                      key={f.id}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setSelectedFilter(f.id)}
+                      className={`flex items-center gap-3 p-3 md:p-4 rounded-2xl border-2 transition-all text-left ${
+                        isSelected 
+                          ? 'bg-white/35 border-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.5)] ring-2 ring-yellow-300' 
+                          : 'bg-white/10 border-white/25 hover:bg-white/20'
+                      }`}
+                    >
+                      <div className="text-3xl shrink-0 p-2 rounded-xl bg-white/10">{f.icon}</div>
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <span className={`font-black text-base md:text-lg truncate ${isSelected ? 'text-yellow-300' : 'text-white'}`}>
+                          {f.name}
+                        </span>
+                        <span className="text-white/70 text-xs truncate">
+                          {f.tag}
+                        </span>
+                      </div>
+                      {isSelected && (
+                        <div className="w-6 h-6 rounded-full bg-yellow-400 text-blue-900 flex items-center justify-center font-black text-sm shrink-0">
+                          ✓
+                        </div>
+                      )}
+                    </motion.button>
+                  );
+                })}
+              </div>
+
+              {/* Timer & Tombol Aksi */}
+              <div className="flex items-center justify-between w-full mb-4 px-2">
+                <span className="text-yellow-300 font-bold text-sm md:text-base flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-ping" />
+                  Otomatis lanjut dalam {filterTimer} detik
+                </span>
+                <button
+                  onClick={() => applyFilter('normal')}
+                  className="text-white/60 hover:text-white text-xs underline"
+                >
+                  Lewati
+                </button>
+              </div>
+
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => applyFilter(selectedFilter)}
+                className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-blue-950 font-black text-xl md:text-2xl py-4 md:py-5 rounded-2xl md:rounded-3xl shadow-[0_10px_30px_rgba(250,204,21,0.5)] border-2 border-yellow-200 transition-all flex items-center justify-center gap-3"
+              >
+                <span>GUNAKAN FILTER INI</span>
+                <CheckCircle2 size={26} />
+              </motion.button>
+            </div>
+
+          </div>
+        </main>
+      );
+    }
 
     return (
       <main className="w-screen h-screen flex flex-col items-center justify-center overflow-hidden select-none relative font-sans">
@@ -380,9 +941,23 @@ export default function PhotoboothKiosk() {
               initial={{ opacity: 0, y: -50 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -50 }}
-              className="absolute top-10 bg-red-600/90 backdrop-blur-sm text-white px-8 py-4 rounded-full text-2xl shadow-xl z-50 border-2 border-red-400"
+              className="absolute top-8 bg-red-600/95 backdrop-blur-md text-white px-8 py-4 rounded-full text-lg md:text-2xl font-black shadow-2xl z-50 border-2 border-red-300 flex items-center gap-3 text-center"
             >
-              {sessionError === 'CAMERA_NOT_READY' ? 'Kamera sedang sibuk, mohon tunggu sebentar...' : sessionError}
+              <span>
+                {sessionError === 'CAMERA_DISCONNECTED'
+                  ? '📷 Kamera DSLR tidak terdeteksi! Pastikan kabel USB terpasang dan kamera menyala.'
+                  : sessionError === 'CANON_AF_FAILED'
+                  ? '⚠️ Autofokus gagal (Err 8D01). Geser tombol lensa ke "MF" (Manual Focus) agar shutter bisa jepret!'
+                  : sessionError === 'CANON_ERROR_81'
+                  ? '⚠️ Kamera sibuk / Autofokus gagal (Err 81). Geser switch lensa ke "MF" (Manual Focus) atau matikan & hidupkan kamera.'
+                  : sessionError === 'CAMERA_NOT_READY'
+                  ? '⏳ Kamera sedang bersiap, mohon tunggu sebentar...'
+                  : sessionError === 'CAPTURE_FAILED'
+                  ? '❌ Gagal menjepret foto. Periksa kabel USB & status kamera DSLR.'
+                  : sessionError === 'CAMERA_CAPTURE_TIMEOUT'
+                  ? '⏳ Kamera DSLR tidak merespons (Timeout). Periksa tombol power & kabel USB.'
+                  : sessionError}
+              </span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -512,7 +1087,18 @@ export default function PhotoboothKiosk() {
 
             {/* Countdown Overlay Melayang di Tengah Kamera */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30">
-              {countdown && (
+              {isCapturing ? (
+                <div className="flex flex-col items-center">
+                  <motion.h2 
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: [1, 1.15, 1], opacity: 1 }}
+                    transition={{ duration: 0.4, repeat: Infinity }}
+                    className="text-6xl md:text-8xl font-black text-yellow-300 drop-shadow-[0_0_40px_rgba(250,204,21,1)] mb-2 tracking-widest font-sans"
+                  >
+                    📸 SENYUM!
+                  </motion.h2>
+                </div>
+              ) : countdown ? (
                 <div className="flex flex-col items-center">
                   <motion.h2 
                     initial={{ y: -20, opacity: 0 }}
@@ -532,7 +1118,7 @@ export default function PhotoboothKiosk() {
                     {countdown.remaining}
                   </motion.div>
                 </div>
-              )}
+              ) : null}
 
               {isProcessing && (
                 <div className="bg-black/60 backdrop-blur-xl border border-white/20 px-12 py-8 rounded-3xl shadow-2xl flex flex-col items-center gap-4 pointer-events-auto">
@@ -543,14 +1129,14 @@ export default function PhotoboothKiosk() {
               )}
             </div>
 
-            {/* White Flash Overlay inside the camera box */}
+            {/* White Flash Overlay inside the camera box (Auto fade-out like real studio flash) */}
             <AnimatePresence>
               {isCapturing && (
                 <motion.div 
                   initial={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="absolute inset-0 bg-white z-40 rounded-[3rem]"
+                  animate={{ opacity: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="absolute inset-0 bg-white z-40 rounded-[3rem] pointer-events-none"
                 />
               )}
             </AnimatePresence>
@@ -571,13 +1157,19 @@ export default function PhotoboothKiosk() {
       <main className="w-screen h-screen flex flex-col items-center justify-center overflow-hidden select-none relative font-sans">
         <Background />
         
+        {/* Top-Right Corner Timer */}
+        <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-40 flex items-center gap-2 bg-black/30 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-white/20 text-white shadow-lg text-sm sm:text-base font-semibold">
+          <Clock size={18} className="text-yellow-300 animate-pulse" />
+          <span>Sesi berakhir: <span className="text-yellow-300 font-mono font-bold">{resultTimer}s</span></span>
+        </div>
+        
         <div className="flex flex-col md:flex-row gap-6 md:gap-16 items-center justify-center w-full max-w-[95vw] h-full max-h-[88vh] z-10">
           
           {/* Photo Preview (2x6 proportion layout) */}
           <div className="h-[55vh] md:h-full bg-white p-3 md:p-4 rounded-xl shadow-2xl transform -rotate-1 md:-rotate-2 shrink-0">
             {!finalImageError ? (
               <img 
-                src={`/api/image/${session.id}/final?t=${Date.now()}`} 
+                src={`/api/image/${session.id}/final?t=${finalImageKey}`} 
                 alt="Hasil Foto" 
                 className="h-full w-auto object-contain rounded border-2 border-slate-100 shadow-md"
                 onError={() => setFinalImageError(true)}
@@ -595,7 +1187,7 @@ export default function PhotoboothKiosk() {
             </h1>
             
             {qrUrl ? (
-              <div className="flex gap-4 md:gap-8 mb-6 md:mb-12 items-center bg-white/10 p-4 md:p-6 rounded-2xl md:rounded-3xl border-2 border-white/30">
+              <div className="flex gap-4 md:gap-8 mb-6 md:mb-8 items-center bg-white/10 p-4 md:p-6 rounded-2xl md:rounded-3xl border-2 border-white/30">
                 <div className="bg-white p-3 md:p-4 rounded-xl md:rounded-2xl shadow-xl shrink-0">
                   <QRCodeSVG value={qrUrl} size={110} className="md:w-[150px] md:h-[150px]" level="M" />
                 </div>
@@ -607,34 +1199,96 @@ export default function PhotoboothKiosk() {
                 </div>
               </div>
             ) : (
-              <p className="text-xl md:text-3xl text-white font-bold mb-6 md:mb-12 leading-relaxed">
+              <p className="text-xl md:text-3xl text-white font-bold mb-6 md:mb-8 leading-relaxed">
                 Foto kamu berhasil disimpan! (Fitur sinkronisasi QR Cloud sedang menunggu konfigurasi panitia).
               </p>
             )}
 
-            <div className="flex gap-4 md:gap-6 w-full mb-4 md:mb-8">
+            {/* Tombol Cetak & Ganti Filter */}
+            <div className="flex flex-col sm:flex-row gap-3 md:gap-4 w-full mb-4 md:mb-6">
               <button 
                 onClick={handlePrint}
                 disabled={printStatus !== 'IDLE' && printStatus !== 'FAILED'}
-                className={`flex-1 border-2 md:border-4 px-4 md:px-8 py-3 md:py-6 rounded-2xl md:rounded-3xl text-lg md:text-3xl font-black shadow-xl transition-all transform ${
+                className={`flex-1 border-2 md:border-4 px-4 md:px-6 py-3 md:py-5 rounded-2xl md:rounded-3xl text-base md:text-2xl font-black shadow-xl transition-all transform ${
                   printStatus === 'IDLE' || printStatus === 'FAILED'
                     ? 'bg-gradient-to-b from-emerald-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 text-white border-emerald-300 hover:scale-105 active:scale-95'
                     : 'bg-slate-500/50 text-white border-slate-400 cursor-not-allowed opacity-80'
                 }`}
               >
-                {printStatus === 'IDLE' && '🖨️ CETAK FOTO (FISIK)'}
-                {printStatus === 'PENDING' && '⏳ MENUNGGU PRINTER...'}
-                {printStatus === 'PRINTING' && '🖨️ SEDANG MENCETAK...'}
-                {printStatus === 'COMPLETED' && '✅ BERHASIL DICETAK'}
-                {printStatus === 'FAILED' && '❌ GAGAL (COBA LAGI)'}
+                {printStatus === 'IDLE' && '🖨️ CETAK FISIK'}
+                {printStatus === 'PENDING' && '⏳ MENUNGGU...'}
+                {printStatus === 'PRINTING' && '🖨️ MENCETAK...'}
+                {printStatus === 'COMPLETED' && '✅ BERHASIL'}
+                {printStatus === 'FAILED' && '❌ COBA LAGI'}
+              </button>
+
+              <button 
+                onClick={() => setFilterModalOpen(true)}
+                disabled={isChangingFilter}
+                className="flex items-center justify-center gap-2 bg-gradient-to-b from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white border-2 md:border-4 border-purple-300 px-5 md:px-8 py-3 md:py-5 rounded-2xl md:rounded-3xl text-base md:text-2xl font-black shadow-xl transition-all transform hover:scale-105 active:scale-95"
+              >
+                <Palette size={24} />
+                <span>{isChangingFilter ? 'MEMPROSES...' : 'GANTI FILTER'}</span>
               </button>
             </div>
+
+            {/* Modal Pemilihan Ulang Filter */}
+            {filterModalOpen && (
+              <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="bg-slate-900/95 border-2 border-yellow-400 p-6 md:p-8 rounded-[2.5rem] shadow-2xl max-w-lg w-full flex flex-col items-center"
+                >
+                  <div className="flex items-center justify-between w-full mb-4">
+                    <h2 className="text-2xl md:text-3xl font-black text-yellow-300 flex items-center gap-2">
+                      <Palette size={28} />
+                      Ganti Filter Foto
+                    </h2>
+                    <button 
+                      onClick={() => setFilterModalOpen(false)}
+                      className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
+                  <p className="text-white/80 text-sm mb-6 text-center">
+                    Pilih filter baru untuk strip fotomu. Hasil akan langsung diperbarui!
+                  </p>
+
+                  <div className="flex flex-col gap-3 w-full mb-6">
+                    {PHOTO_FILTERS.map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => handleReapplyFilter(f.id)}
+                        disabled={isChangingFilter}
+                        className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all text-left ${
+                          selectedFilter === f.id
+                            ? 'bg-yellow-400/20 border-yellow-400 text-yellow-300 ring-2 ring-yellow-400'
+                            : 'bg-white/10 border-white/20 text-white hover:bg-white/20'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{f.icon}</span>
+                          <div>
+                            <div className="font-black text-lg">{f.name}</div>
+                            <div className="text-xs text-white/60">{f.tag}</div>
+                          </div>
+                        </div>
+                        {selectedFilter === f.id && <Check size={20} className="text-yellow-400" />}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              </div>
+            )}
+
 
             <button 
               onClick={resetSelection}
               className="w-full bg-sky-500 hover:bg-sky-400 text-white border-2 md:border-4 border-sky-300 px-8 md:px-16 py-3 md:py-6 rounded-full text-xl md:text-4xl font-black shadow-[0_10px_30px_rgba(14,165,233,0.5)] transition-all transform hover:scale-105 active:scale-95"
             >
-              SELESAI & KEMBALI
+              SELESAI & KEMBALI ({resultTimer}s)
             </button>
           </div>
 
@@ -656,9 +1310,52 @@ export default function PhotoboothKiosk() {
         </div>
       )}
 
+      {/* Top-Right Corner Countdown Timers */}
+      {step === 'payment' && (
+        <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-40 flex items-center gap-2 bg-black/30 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-white/20 text-white shadow-lg text-sm sm:text-base font-semibold">
+          <Clock size={18} className="text-yellow-300 animate-pulse" />
+          <span>Kembali dalam <span className="text-yellow-300 font-mono font-bold">{paymentTimer}s</span></span>
+        </div>
+      )}
+
+      {step === 'qris_payment' && (
+        <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-40 flex items-center gap-2 bg-black/40 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-yellow-400/40 text-yellow-300 shadow-lg text-sm sm:text-base font-bold">
+          <Clock size={18} className="text-yellow-400 animate-pulse" />
+          <span>Sisa waktu: <span className="font-mono text-white font-black text-base sm:text-lg">{Math.floor(qrisTimer / 60)}:{(qrisTimer % 60).toString().padStart(2, '0')}</span></span>
+        </div>
+      )}
+
+      {step === 'cash_verification' && (
+        <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-40 flex items-center gap-2 bg-black/30 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-white/20 text-white shadow-lg text-sm sm:text-base font-semibold">
+          <Clock size={18} className="text-yellow-300 animate-pulse" />
+          <span>Waktu verifikasi: <span className="text-yellow-300 font-mono font-bold">{cashTimer}s</span></span>
+        </div>
+      )}
+
+      {step === 'template' && (
+        <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-40 flex items-center gap-2 bg-black/30 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-white/20 text-white shadow-lg text-sm sm:text-base font-bold">
+          <Clock size={18} className="text-yellow-400 animate-pulse" />
+          <span>Mulai otomatis: <span className="text-yellow-300 font-mono font-black">{templateTimer}s</span></span>
+        </div>
+      )}
+
       {sessionError && !session && (
-        <div className="absolute top-6 right-6 bg-red-600/90 backdrop-blur-sm text-white px-6 py-3 rounded-full font-bold text-xl shadow-lg border-2 border-red-400 z-50">
-          {sessionError}
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-red-600/90 backdrop-blur-sm text-white px-6 py-3 rounded-full font-bold text-base md:text-xl shadow-lg border-2 border-red-400 z-50 flex items-center gap-3 max-w-[90vw] text-center">
+          <span>
+            {sessionError === 'CAMERA_DISCONNECTED'
+              ? '📷 Kamera DSLR tidak terdeteksi! Pastikan kamera menyala & kabel terpasang.'
+              : sessionError === 'CANON_ERROR_81'
+              ? '⚠️ Kamera sibuk / AF gagal (Err 81). Geser switch lensa ke "MF".'
+              : sessionError === 'SESSION_ALREADY_ACTIVE'
+              ? 'Mengatur ulang sesi lama...'
+              : sessionError}
+          </span>
+          <button 
+            onClick={() => resetSession()}
+            className="text-xs bg-white/20 hover:bg-white/40 px-3 py-1 rounded-full text-white underline ml-2"
+          >
+            Tutup
+          </button>
         </div>
       )}
 
@@ -732,6 +1429,7 @@ export default function PhotoboothKiosk() {
             </motion.button>
           </div>
           
+
           <motion.button 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -814,6 +1512,7 @@ export default function PhotoboothKiosk() {
             )}
           </div>
 
+
           <motion.button 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -873,6 +1572,7 @@ export default function PhotoboothKiosk() {
             </form>
           </motion.div>
 
+
           <motion.button 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -890,18 +1590,14 @@ export default function PhotoboothKiosk() {
           <motion.h1 
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="text-3xl sm:text-5xl font-black text-white mb-6 sm:mb-12 tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.5)] text-center"
+            className="text-3xl sm:text-5xl font-black text-white mb-3 sm:mb-4 tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.5)] text-center"
           >
             PILIH TEMPLATE KAMU
           </motion.h1>
+
           
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8 w-full mb-6 sm:mb-12 px-2 sm:px-4">
-            {[
-              { id: 'y2k-dreamy', name: 'Y2K Dreamy', icon: '✨', file: '/templates/y2k-dreamy.png?v=2' },
-              { id: 'classic', name: 'Classic', icon: '📸', file: '/templates/classic.png?v=2' },
-              { id: 'futuristic', name: 'Futuristic', icon: '🚀', file: '/templates/futuristic.png?v=2' },
-              { id: 'fun', name: 'Fun', icon: '🎈', file: '/templates/fun.png?v=2' },
-            ].map((tpl, i) => (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6 w-full max-h-[50vh] overflow-y-auto px-2 sm:px-4 mb-6 sm:mb-12 py-1">
+            {availableTemplates.map((tpl, i) => (
               <TemplateCard
                 key={tpl.id}
                 tpl={tpl}
@@ -924,15 +1620,15 @@ export default function PhotoboothKiosk() {
             <motion.button 
               whileHover={isConnected && !isStarting ? { scale: 1.05 } : {}}
               whileTap={isConnected && !isStarting ? { scale: 0.95 } : {}}
-              onClick={handleStartSession}
+              onClick={() => handleStartSession()}
               disabled={!isConnected || isStarting}
-              className={`px-20 py-6 rounded-full text-2xl font-bold transition-all backdrop-blur-md border ${
+              className={`px-14 sm:px-20 py-6 rounded-full text-2xl font-bold transition-all backdrop-blur-md border ${
                 isConnected && !isStarting
                   ? 'bg-yellow-400/90 text-blue-900 border-yellow-300 shadow-[0_0_30px_rgba(250,204,21,0.5)] hover:bg-yellow-300' 
                   : 'bg-white/10 text-white/50 border-white/20 cursor-not-allowed'
               }`}
             >
-              {isStarting ? 'MEMULAI...' : isConnected ? 'LANJUTKAN' : 'MENYAMBUNG...'}
+              {isStarting ? 'MEMULAI...' : isConnected ? `LANJUTKAN (${templateTimer}s)` : 'MENYAMBUNG...'}
             </motion.button>
           </div>
         </div>

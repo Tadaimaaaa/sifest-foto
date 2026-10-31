@@ -40,7 +40,8 @@ class MockCameraAdapter {
         try {
             // Simulate capture delay (shutter + download)
             await new Promise((resolve) => setTimeout(resolve, 800));
-            const sessionDir = path_1.default.join(config_1.config.storagePath, 'captures', sessionId);
+            const absoluteStoragePath = path_1.default.resolve(process.cwd(), config_1.config.storagePath);
+            const sessionDir = path_1.default.join(absoluteStoragePath, 'sessions', sessionId, 'original');
             if (!fs_1.default.existsSync(sessionDir)) {
                 fs_1.default.mkdirSync(sessionDir, { recursive: true });
             }

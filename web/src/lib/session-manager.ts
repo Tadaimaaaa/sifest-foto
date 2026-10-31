@@ -21,6 +21,7 @@ export type SessionState =
   | 'PHOTO_3_COUNTDOWN'
   | 'PHOTO_3_CAPTURE'
   | 'PHOTO_3_WAIT_READY'
+  | 'FILTER_SELECTION'
   | 'PROCESSING'
   | 'COMPLETE'
   | 'ABORTED'
@@ -29,6 +30,7 @@ export type SessionState =
 export interface PhotoboothSession {
   id: string;
   templateId: string;
+  filterId?: string;
   status: 'active' | 'completed' | 'abandoned' | 'error';
   currentPhoto: number;
   photo1Path?: string;
@@ -46,6 +48,7 @@ export class SessionManager {
   private broadcast: EventCallback;
   private abortController: AbortController | null = null;
   private autoResetTimeout: NodeJS.Timeout | null = null;
+  private filterResolver: ((filterId: string) => void) | null = null;
 
   constructor(broadcast: EventCallback) {
     this.broadcast = broadcast;
@@ -55,13 +58,36 @@ export class SessionManager {
     return this.activeSession;
   }
 
+  public applyFilter(filterId: string) {
+    if (this.filterResolver) {
+      console.log(`[Session] Filter selected by client: ${filterId}`);
+      this.filterResolver(filterId);
+      this.filterResolver = null;
+    }
+  }
+
   public getState(): SessionState {
     return this.state;
   }
 
   public async startSession(templateId: string): Promise<PhotoboothSession> {
-    if (this.activeSession && this.state !== 'IDLE') {
-      throw new Error('SESSION_ALREADY_ACTIVE');
+    if (this.activeSession) {
+      console.log(`[Session] Existing session (${this.activeSession.id}, state: ${this.state}) detected. Auto-resetting for new session...`);
+      if (this.abortController) {
+        try {
+          this.abortController.abort();
+        } catch {}
+      }
+      if (this.autoResetTimeout) {
+        clearTimeout(this.autoResetTimeout);
+        this.autoResetTimeout = null;
+      }
+      if (this.filterResolver) {
+        this.filterResolver('normal');
+        this.filterResolver = null;
+      }
+      this.activeSession = null;
+      this.state = 'IDLE';
     }
 
     const dateStr = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 8);
@@ -118,6 +144,10 @@ export class SessionManager {
     if (this.autoResetTimeout) {
       clearTimeout(this.autoResetTimeout);
       this.autoResetTimeout = null;
+    }
+    if (this.filterResolver) {
+      this.filterResolver('normal');
+      this.filterResolver = null;
     }
     this.activeSession = null;
     this.state = 'IDLE';
@@ -203,7 +233,7 @@ export class SessionManager {
 
         const result = await cameraClient.capture(session.id, i);
         if (!result.success) {
-          throw new Error('CAPTURE_FAILED');
+          throw new Error((result as any).error || 'CAPTURE_FAILED');
         }
 
         const photoUrl = `/api/image/${session.id}/photo-${i}?t=${Date.now()}`;
@@ -219,9 +249,32 @@ export class SessionManager {
         this.broadcast('session:updated', { session });
       }
 
+      // Enter Filter Selection State
+      this.state = 'FILTER_SELECTION';
+      console.log(`[Session] Waiting for user filter selection...`);
+      this.broadcast('session:filter_selection', { sessionId: session.id });
+      this.broadcast('session:updated', { session });
+
+      const chosenFilter = await new Promise<string>((resolve) => {
+        this.filterResolver = resolve;
+        // Auto-advance with 'normal' if user doesn't pick in 35 seconds
+        const filterTimer = setTimeout(() => {
+          console.log(`[Session] Filter selection timed out after 35s, defaulting to normal`);
+          resolve('normal');
+        }, 35000);
+        signal.addEventListener('abort', () => {
+          clearTimeout(filterTimer);
+          resolve('normal');
+        });
+      });
+
+      this.filterResolver = null;
+      session.filterId = chosenFilter;
+      session.updatedAt = new Date().toISOString();
+
       this.state = 'PROCESSING';
-      console.log(`[Session] Processing`);
-      this.broadcast('processing:started', { sessionId: session.id });
+      console.log(`[Session] Processing with filter: ${chosenFilter}`);
+      this.broadcast('processing:started', { sessionId: session.id, filterId: chosenFilter });
       
       try {
         delete require.cache[require.resolve('./compositor')];
@@ -232,6 +285,8 @@ export class SessionManager {
         await processSession({
           sessionId: session.id,
           templateId: session.templateId,
+          filterId: chosenFilter,
+          allowOverwrite: true,
           storagePath: process.env.STORAGE_PATH || '../storage'
         });
       } catch (compErr: any) {

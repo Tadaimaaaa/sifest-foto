@@ -22,10 +22,12 @@ export interface CompositorOptions {
   sessionId: string;
   storagePath: string; // The root storage path (e.g. '../storage')
   templateId?: string;
+  filterId?: string;
+  allowOverwrite?: boolean;
 }
 
 export async function processSession(options: CompositorOptions): Promise<void> {
-  const { sessionId, storagePath, templateId } = options;
+  const { sessionId, storagePath, templateId, filterId = 'normal', allowOverwrite = false } = options;
 
   const absoluteStoragePath = path.resolve(process.cwd(), storagePath);
   const sessionDir = path.join(absoluteStoragePath, 'sessions', sessionId);
@@ -51,12 +53,14 @@ export async function processSession(options: CompositorOptions): Promise<void> 
   const finalPath = path.join(finalDir, 'photobooth-final.jpg');
   const previewPath = path.join(finalDir, 'photobooth-preview.jpg');
 
-  // Ensure we don't overwrite completed final image silently
-  try {
-    await fs.access(finalPath);
-    throw new Error('FINAL_ALREADY_EXISTS');
-  } catch (err: any) {
-    if (err.message === 'FINAL_ALREADY_EXISTS') throw err;
+  // Ensure we don't overwrite completed final image silently unless explicitly allowed
+  if (!allowOverwrite) {
+    try {
+      await fs.access(finalPath);
+      throw new Error('FINAL_ALREADY_EXISTS');
+    } catch (err: any) {
+      if (err.message === 'FINAL_ALREADY_EXISTS') throw err;
+    }
   }
 
   console.log(`[Compositor] Starting compositing for ${sessionId}...`);
@@ -154,15 +158,34 @@ export async function processSession(options: CompositorOptions): Promise<void> 
       p3Y = 2572;
     }
 
-    // Process and resize photos safely
+    // Process and resize photos safely with chosen filter
     const getPhotoBuffer = async (filePath: string) => {
-      return sharp(filePath)
+      let pipeline = sharp(filePath)
         .rotate() // Auto-orient based on EXIF
         .resize(pWidth, pHeight, {
           fit: 'cover',
           position: 'center'
-        })
-        .toBuffer();
+        });
+
+      // Apply filter
+      if (filterId === 'bw' || filterId === 'black-white') {
+        pipeline = pipeline.grayscale().linear(1.15, -15);
+      } else if (filterId === 'vintage' || filterId === 'sepia') {
+        pipeline = pipeline
+          .modulate({ brightness: 1.05, saturation: 1.15 })
+          .tint({ r: 255, g: 235, b: 205 })
+          .linear(1.05, -5);
+      } else if (filterId === 'cool' || filterId === 'cyber') {
+        pipeline = pipeline
+          .modulate({ brightness: 1.03, saturation: 0.95 })
+          .tint({ r: 210, g: 230, b: 255 });
+      } else if (filterId === 'dreamy' || filterId === 'soft') {
+        pipeline = pipeline
+          .modulate({ brightness: 1.12, saturation: 1.25 })
+          .gamma(1.1);
+      }
+
+      return pipeline.toBuffer();
     };
 
     const [img1, img2, img3] = await Promise.all([
@@ -257,7 +280,10 @@ export async function processSession(options: CompositorOptions): Promise<void> 
         .toFile(tempFinalPath);
     }
 
-    // Atomic rename for final
+    // Atomic rename for final (safely handle Windows overwrite)
+    try {
+      await fs.unlink(finalPath);
+    } catch {}
     await fs.rename(tempFinalPath, finalPath);
 
     // Create a high-res preview version (600x1800, quality 90)
@@ -267,6 +293,9 @@ export async function processSession(options: CompositorOptions): Promise<void> 
       .jpeg({ quality: 90 })
       .toFile(tempPreviewPath);
       
+    try {
+      await fs.unlink(previewPath);
+    } catch {}
     await fs.rename(tempPreviewPath, previewPath);
 
     console.log(`[Compositor] Success for ${sessionId}`);

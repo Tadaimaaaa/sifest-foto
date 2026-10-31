@@ -5,24 +5,28 @@ import Link from 'next/link';
 import { 
   Upload, 
   Trash2, 
-  CheckCircle2, 
   ExternalLink, 
-  Camera, 
-  Image as ImageIcon, 
-  Lock, 
   RefreshCw, 
-  Sparkles,
-  Info
+  Plus,
+  X,
+  Eye,
+  FileText,
+  Info,
+  Lock,
+  Layers
 } from 'lucide-react';
 
 interface TemplateItem {
   id: string;
   name: string;
   icon: string;
+  isBuiltin?: boolean;
   hasCustom: boolean;
   url: string | null;
   updatedAt: string | null;
 }
+
+const PRESET_ICONS = ['✨', '📸', '🚀', '🎈', '🎨', '🌟', '🎞️', '🌸', '⚡', '👑'];
 
 export default function AdminDashboard() {
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -34,7 +38,16 @@ export default function AdminDashboard() {
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  // Add Template Modal State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newIcon, setNewIcon] = useState('✨');
+  const [newFile, setNewFile] = useState<File | null>(null);
+  const [newFilePreview, setNewFilePreview] = useState<string | null>(null);
+  const [isSubmittingNew, setIsSubmittingNew] = useState(false);
+
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+  const newFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Check if PIN was already saved this session
   useEffect(() => {
@@ -103,65 +116,122 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleDelete = async (templateId: string) => {
-    if (!confirm(`Reset template "${templateId}" kembali ke desain bawaan sistem?`)) return;
+  const handleNewFileSelect = (file: File) => {
+    setNewFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setNewFilePreview(objectUrl);
+  };
+
+  const handleCreateTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim()) {
+      alert('Mohon masukkan nama template');
+      return;
+    }
+    if (!newFile) {
+      alert('Mohon pilih file desain template (PNG / JPG)');
+      return;
+    }
+
+    setIsSubmittingNew(true);
+    setMessage(null);
+
+    const formData = new FormData();
+    formData.append('action', 'create');
+    formData.append('name', newName.trim());
+    formData.append('icon', newIcon.trim() || '🎨');
+    formData.append('file', newFile);
 
     try {
-      const res = await fetch(`/api/admin/templates?templateId=${templateId}`, {
+      const res = await fetch('/api/admin/templates', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ text: data.message, type: 'success' });
+        setShowAddModal(false);
+        setNewName('');
+        setNewIcon('✨');
+        setNewFile(null);
+        if (newFilePreview) URL.revokeObjectURL(newFilePreview);
+        setNewFilePreview(null);
+        await fetchTemplates();
+      } else {
+        alert(data.error || 'Gagal menambahkan template baru');
+      }
+    } catch (err) {
+      alert('Terjadi kesalahan saat menambahkan template');
+    } finally {
+      setIsSubmittingNew(false);
+    }
+  };
+
+  const handleDelete = async (tpl: TemplateItem) => {
+    const isCustom = !tpl.isBuiltin;
+    const confirmMsg = isCustom
+      ? `Hapus template "${tpl.name}" secara permanen? Template ini tidak akan muncul lagi di kiosk photobooth.`
+      : `Reset file desain "${tpl.name}" kembali ke desain bawaan sistem?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch(`/api/admin/templates?templateId=${tpl.id}`, {
         method: 'DELETE',
       });
       const data = await res.json();
       if (data.success) {
         setMessage({ text: data.message, type: 'success' });
         await fetchTemplates();
+      } else {
+        setMessage({ text: data.error || 'Gagal menghapus template', type: 'error' });
       }
     } catch (err) {
-      alert('Gagal mereset template');
+      alert('Gagal memproses penghapusan template');
     }
   };
 
+  // PIN Lock Screen
   if (!isUnlocked) {
     return (
-      <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/40 via-slate-950 to-black -z-10" />
-
-        <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl flex flex-col items-center text-center">
-          <div className="w-20 h-20 bg-blue-500/20 border border-blue-400/40 rounded-full flex items-center justify-center text-blue-400 mb-6 shadow-inner">
-            <Lock size={36} />
+      <main className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center p-6 font-sans">
+        <div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 p-8 rounded-xl shadow-2xl flex flex-col items-center text-center">
+          <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700/80 flex items-center justify-center text-zinc-300 mb-5">
+            <Lock size={18} />
           </div>
 
-          <h1 className="text-3xl font-black tracking-wide text-white mb-2">PANEL ADMIN</h1>
-          <p className="text-blue-200/70 text-sm mb-8">
-            Khusus Panitia SI-FEST 2026. Masukkan PIN panitia untuk mengelola template & sistem.
+          <h1 className="text-base font-semibold text-zinc-100">SI-FEST Admin Access</h1>
+          <p className="text-xs text-zinc-400 mt-1 mb-6">
+            Masukkan PIN panitia untuk mengakses pengelola template
           </p>
 
-          <form onSubmit={handleUnlock} className="w-full flex flex-col gap-4">
+          <form onSubmit={handleUnlock} className="w-full space-y-3">
             <input 
-              type="password"
+              type="password" 
               value={pinInput}
               onChange={(e) => {
                 setPinInput(e.target.value);
                 setPinError(false);
               }}
-              placeholder="PIN Panitia (Default: 12345)"
-              className="w-full bg-black/40 border border-white/30 rounded-2xl px-6 py-4 text-center text-2xl tracking-widest text-white placeholder-white/40 focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400/30 transition-all"
+              placeholder="PIN (Default: 12345)"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-center text-sm font-mono tracking-widest text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600"
               autoFocus
             />
 
             {pinError && (
-              <p className="text-red-400 text-sm font-semibold">PIN salah! Gunakan PIN panitia yang benar.</p>
+              <p className="text-red-400 text-xs font-medium">PIN tidak sesuai. Silahkan coba lagi.</p>
             )}
 
             <button
               type="submit"
-              className="w-full bg-yellow-400 hover:bg-yellow-300 text-blue-950 font-black text-xl py-4 rounded-2xl shadow-lg transition-all mt-2 active:scale-95"
+              className="w-full bg-white hover:bg-zinc-200 text-zinc-950 font-medium text-xs py-2.5 rounded-lg shadow-sm transition-colors"
             >
-              MASUK KE DASHBOARD
+              Buka Dashboard
             </button>
           </form>
 
-          <Link href="/photobooth" className="text-white/60 hover:text-white text-sm mt-6 flex items-center gap-1.5 transition-colors">
-            Kembali ke Layar Kiosk Photobooth &rarr;
+          <Link href="/photobooth" className="text-zinc-500 hover:text-zinc-300 text-xs mt-6 transition-colors">
+            Kembali ke Kiosk Photobooth &rarr;
           </Link>
         </div>
       </main>
@@ -169,217 +239,399 @@ export default function AdminDashboard() {
   }
 
   return (
-    <main className="min-h-screen w-full overflow-y-auto bg-slate-950 text-white p-6 md:p-12 pb-24 relative font-sans">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/30 via-slate-950 to-black -z-10" />
-
-      {/* Top Header */}
-      <header className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-8 border-b border-white/10">
-        <div>
+    <main className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
+      {/* Top Navbar */}
+      <nav className="border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="bg-yellow-400 text-blue-950 text-xs font-black px-3 py-1 rounded-full uppercase tracking-widest">
-              SI-FEST 2026
-            </span>
-            <span className="text-white/50 text-sm">Official Photobooth Management</span>
-          </div>
-          <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight mt-1 flex items-center gap-3">
-            <Sparkles className="text-yellow-400" /> Pengelola Template Foto
-          </h1>
-          <p className="text-white/60 text-sm mt-1">
-            Unggah desain buatan panitia (Canva/Photoshop). Template yang diunggah langsung aktif di iPad & saat jepret foto.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <button
-            onClick={fetchTemplates}
-            disabled={loading}
-            className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 px-4 py-3 rounded-2xl text-sm font-semibold transition-all"
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            Segarkan
-          </button>
-
-          <Link
-            href="/photobooth"
-            target="_blank"
-            className="flex items-center gap-2 bg-yellow-400 hover:bg-yellow-300 text-blue-950 font-black px-6 py-3 rounded-2xl text-sm shadow-lg shadow-yellow-400/20 transition-all active:scale-95"
-          >
-            Buka Kiosk (iPad)
-            <ExternalLink size={16} />
-          </Link>
-        </div>
-      </header>
-
-      {/* Alert Notification */}
-      {message && (
-        <div className="max-w-7xl mx-auto mt-6">
-          <div className={`p-4 rounded-2xl border flex items-center justify-between ${
-            message.type === 'success' 
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' 
-              : 'bg-red-500/10 border-red-500/30 text-red-300'
-          }`}>
-            <span className="font-semibold text-sm">{message.text}</span>
-            <button onClick={() => setMessage(null)} className="text-sm opacity-60 hover:opacity-100">&times;</button>
-          </div>
-        </div>
-      )}
-
-      <div className="max-w-7xl mx-auto mt-10 grid grid-cols-1 lg:grid-cols-4 gap-8">
-        
-        {/* Template Cards (3 Columns) */}
-        <div className="lg:col-span-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {templates.map((tpl) => (
-              <div 
-                key={tpl.id}
-                className="bg-white/5 border border-white/10 hover:border-white/20 rounded-3xl p-6 backdrop-blur-md flex flex-col justify-between transition-all"
-              >
-                {/* Header Card */}
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <span className="text-3xl">{tpl.icon}</span>
-                    <div>
-                      <h2 className="text-xl font-black text-white">{tpl.name}</h2>
-                      <span className="text-xs text-white/50 font-mono">ID: {tpl.id}</span>
-                    </div>
-                  </div>
-
-                  {tpl.hasCustom ? (
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full">
-                      <CheckCircle2 size={13} /> Kustom Aktif
-                    </span>
-                  ) : (
-                    <span className="text-xs font-semibold text-white/50 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
-                      Bawaan Sistem
-                    </span>
-                  )}
-                </div>
-
-                {/* Preview Frame */}
-                <div className="relative w-full h-80 bg-black/40 border border-white/10 rounded-2xl flex items-center justify-center overflow-hidden my-4 group">
-                  {tpl.hasCustom && tpl.url ? (
-                    <div className="w-full h-full flex items-center justify-center p-3 relative">
-                      <img 
-                        src={tpl.url} 
-                        alt={tpl.name} 
-                        className="max-h-full max-w-full object-contain rounded-lg drop-shadow-2xl" 
-                      />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 p-4">
-                        <a 
-                          href={tpl.url} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-4 py-2 rounded-xl backdrop-blur-md"
-                        >
-                          Lihat Ukuran Asli
-                        </a>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center text-center p-6 text-white/40">
-                      <ImageIcon size={48} className="mb-3 opacity-40" />
-                      <p className="text-sm font-semibold">Menggunakan Desain Bawaan</p>
-                      <p className="text-xs text-white/30 mt-1">Belum ada file kustom yang diunggah</p>
-                    </div>
-                  )}
-
-                  {uploadingId === tpl.id && (
-                    <div className="absolute inset-0 bg-blue-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-20">
-                      <RefreshCw size={36} className="text-yellow-400 animate-spin" />
-                      <span className="text-sm font-bold text-white">Mengunggah Template...</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex items-center gap-3 mt-2">
-                  <input 
-                    type="file" 
-                    accept="image/png,image/jpeg"
-                    className="hidden" 
-                    ref={(el) => { fileInputRefs.current[tpl.id] = el; }}
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        handleFileChange(tpl.id, e.target.files[0]);
-                      }
-                    }}
-                  />
-
-                  <button
-                    onClick={() => fileInputRefs.current[tpl.id]?.click()}
-                    disabled={uploadingId === tpl.id}
-                    className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-md active:scale-95"
-                  >
-                    <Upload size={16} />
-                    {tpl.hasCustom ? 'Ganti Desain' : 'Upload Desain'}
-                  </button>
-
-                  {tpl.hasCustom && (
-                    <button
-                      onClick={() => handleDelete(tpl.id)}
-                      disabled={uploadingId === tpl.id}
-                      className="p-3 bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 rounded-xl transition-all"
-                      title="Reset ke desain bawaan"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Sidebar Info & Design Guide (1 Column) */}
-        <div className="space-y-6">
-          <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-md">
-            <h3 className="text-lg font-black text-white flex items-center gap-2 mb-4">
-              <Info className="text-yellow-400" size={20} /> Panduan Desain Template
-            </h3>
-
-            <p className="text-xs text-white/70 leading-relaxed mb-4">
-              Bagikan panduan ini ke tim desain (PDD) untuk dibuat di <b>Canva</b> atau <b>Photoshop</b>:
-            </p>
-
-            <div className="space-y-3 text-xs">
-              <div className="bg-black/30 p-3 rounded-xl border border-white/5">
-                <span className="text-white/50 block font-semibold">Ukuran Lembar:</span>
-                <span className="text-yellow-300 font-mono font-bold text-sm">600 x 1800 px</span>
-                <span className="text-white/40 block text-[11px] mt-0.5">(Rasio 1:3 strip 2x6 inci pada 300 DPI)</span>
-              </div>
-
-              <div className="bg-black/30 p-3 rounded-xl border border-white/5">
-                <span className="text-white/50 block font-semibold">Format Terbaik:</span>
-                <span className="text-emerald-400 font-bold">PNG Transparan</span>
-                <span className="text-white/40 block text-[11px] mt-0.5">
-                  Bagian 3 kotak foto dibiarkan <b>bolong / transparan</b> agar foto otomatis masuk pas di bawah frame.
-                </span>
-              </div>
-
-              <div className="bg-black/30 p-3 rounded-xl border border-white/5">
-                <span className="text-white/50 block font-semibold">Ukuran 3 Lubang Foto:</span>
-                <span className="text-white font-mono font-bold">500 x 333 px</span>
-                <span className="text-white/50 block font-semibold mt-2">Posisi Vertikal (Y):</span>
-                <ul className="list-disc list-inside text-white/70 font-mono text-[11px] mt-1 space-y-0.5">
-                  <li>Foto 1: Y = 250 px</li>
-                  <li>Foto 2: Y = 633 px</li>
-                  <li>Foto 3: Y = 1016 px</li>
-                </ul>
-              </div>
+            <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 text-xs font-bold font-mono">
+              SI
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-zinc-400 font-medium">SI-FEST 2026</span>
+              <span className="text-zinc-700">/</span>
+              <span className="text-zinc-200 font-medium">Template Manager</span>
             </div>
           </div>
 
-          <div className="bg-blue-900/20 border border-blue-500/20 rounded-3xl p-6 backdrop-blur-md">
-            <h3 className="text-sm font-bold text-blue-300 flex items-center gap-2 mb-2">
-              <Camera size={18} /> Alur Kerja Kiosk
-            </h3>
-            <p className="text-xs text-blue-200/70 leading-relaxed">
-              Setelah template di-upload di sini, panitia tidak perlu restart server. Desain baru akan langsung otomatis muncul di iPad konsumen!
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchTemplates}
+              disabled={loading}
+              className="text-xs font-medium text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-800/80 border border-zinc-800 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              <span>Refresh</span>
+            </button>
+
+            <Link
+              href="/photobooth"
+              target="_blank"
+              className="text-xs font-medium text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-800/80 border border-zinc-800 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+            >
+              <span>Kiosk</span>
+              <ExternalLink size={12} />
+            </Link>
+
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="text-xs font-medium text-zinc-950 bg-white hover:bg-zinc-200 px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors"
+            >
+              <Plus size={14} />
+              <span>Tambah Template</span>
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Body */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Title Bar */}
+        <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-zinc-900 pb-6">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
+              Template Strip Photobooth
+            </h1>
+            <p className="text-xs text-zinc-400 mt-1 max-w-2xl leading-relaxed">
+              Kelola desain frame foto strip 2x6 inci. Template yang diunggah akan otomatis tersinkronisasi ke kiosk iPad tanpa perlu restart server.
             </p>
+          </div>
+          <div className="text-xs font-mono text-zinc-500 bg-zinc-900/60 border border-zinc-800/80 px-3 py-1.5 rounded-lg w-fit">
+            {templates.length} template aktif
           </div>
         </div>
 
+        {/* Alert Notification */}
+        {message && (
+          <div className="mb-6">
+            <div className={`px-4 py-3 rounded-lg border text-xs flex items-center justify-between ${
+              message.type === 'success' 
+                ? 'bg-emerald-950/40 border-emerald-800/50 text-emerald-300' 
+                : 'bg-red-950/40 border-red-800/50 text-red-300'
+            }`}>
+              <span className="font-medium">{message.text}</span>
+              <button onClick={() => setMessage(null)} className="opacity-60 hover:opacity-100 ml-4">&times;</button>
+            </div>
+          </div>
+        )}
+
+        {/* Content Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Template Cards (3 Columns) */}
+          <div className="lg:col-span-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {templates.map((tpl) => (
+                <div 
+                  key={tpl.id}
+                  className="bg-zinc-900/60 border border-zinc-800/80 rounded-xl overflow-hidden flex flex-col hover:border-zinc-700/80 transition-all"
+                >
+                  {/* Card Header */}
+                  <div className="px-4 py-3 border-b border-zinc-800/60 flex items-center justify-between bg-zinc-900/40">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-base shrink-0">{tpl.icon}</span>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold text-zinc-200 truncate">{tpl.name}</h3>
+                        <span className="text-[11px] font-mono text-zinc-500 block truncate">{tpl.id}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      {!tpl.isBuiltin ? (
+                        <span className="inline-flex items-center text-[11px] font-medium text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
+                          Kustom
+                        </span>
+                      ) : tpl.hasCustom ? (
+                        <span className="inline-flex items-center text-[11px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                          Kustom Aktif
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center text-[11px] font-medium text-zinc-400 bg-zinc-800/80 border border-zinc-700/50 px-2 py-0.5 rounded-md">
+                          Bawaan
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card Preview Frame */}
+                  <div className="relative p-6 flex items-center justify-center bg-zinc-950/70 h-80 overflow-hidden group">
+                    {/* Subtle transparency checkerboard */}
+                    <div 
+                      className="absolute inset-0 opacity-[0.03] pointer-events-none"
+                      style={{
+                        backgroundImage: `linear-gradient(45deg, #fff 25%, transparent 25%), linear-gradient(-45deg, #fff 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #fff 75%), linear-gradient(-45deg, transparent 75%, #fff 75%)`,
+                        backgroundSize: '16px 16px',
+                        backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px'
+                      }}
+                    />
+
+                    {tpl.hasCustom && tpl.url ? (
+                      <div className="relative h-full flex items-center justify-center">
+                        <img 
+                          src={tpl.url} 
+                          alt={tpl.name} 
+                          className="max-h-full w-auto object-contain rounded shadow-lg border border-zinc-800/80"
+                        />
+                        <div className="absolute inset-0 bg-zinc-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded">
+                          <a
+                            href={tpl.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-medium text-zinc-200 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-md border border-zinc-700 flex items-center gap-1.5 transition-colors shadow-sm"
+                          >
+                            <Eye size={13} />
+                            <span>Lihat Asli</span>
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-center p-4 text-zinc-600">
+                        <FileText size={32} className="mb-2 opacity-40" />
+                        <p className="text-xs font-medium text-zinc-400">File Frame Bawaan</p>
+                        <p className="text-[11px] text-zinc-600 mt-0.5">Belum ada file kustom yang diunggah</p>
+                      </div>
+                    )}
+
+                    {uploadingId === tpl.id && (
+                      <div className="absolute inset-0 bg-zinc-950/85 backdrop-blur-sm flex flex-col items-center justify-center gap-2 z-10">
+                        <RefreshCw size={20} className="text-zinc-200 animate-spin" />
+                        <span className="text-xs text-zinc-300 font-medium">Mengunggah berkas...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card Actions */}
+                  <div className="p-3 border-t border-zinc-800/60 bg-zinc-900/40 flex items-center gap-2">
+                    <input 
+                      type="file" 
+                      accept="image/png,image/jpeg"
+                      className="hidden" 
+                      ref={(el) => { fileInputRefs.current[tpl.id] = el; }}
+                      onChange={(e) => {
+                        if (e.target.files?.[0]) {
+                          handleFileChange(tpl.id, e.target.files[0]);
+                        }
+                      }}
+                    />
+
+                    <button
+                      onClick={() => fileInputRefs.current[tpl.id]?.click()}
+                      disabled={uploadingId === tpl.id}
+                      className="flex-1 text-xs font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700/80 border border-zinc-700/60 py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Upload size={13} />
+                      <span>{tpl.hasCustom ? 'Ganti Desain' : 'Upload Desain'}</span>
+                    </button>
+
+                    {(!tpl.isBuiltin || tpl.hasCustom) && (
+                      <button
+                        onClick={() => handleDelete(tpl)}
+                        disabled={uploadingId === tpl.id}
+                        className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 rounded-lg transition-colors"
+                        title={!tpl.isBuiltin ? 'Hapus template ini secara permanen' : 'Reset ke desain bawaan sistem'}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Sidebar Specs Guide (1 Column) */}
+          <div className="space-y-5">
+            <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-4 pb-3 border-b border-zinc-800/60">
+                <FileText size={16} className="text-zinc-400" />
+                <h3 className="text-sm font-semibold text-zinc-200">Panduan Desain Frame</h3>
+              </div>
+
+              <div className="space-y-3.5 text-xs">
+                <div>
+                  <span className="text-zinc-500 block mb-1">Ukuran Kanvas (Strip 2x6)</span>
+                  <div className="font-mono text-zinc-200 bg-zinc-950 px-2.5 py-1.5 rounded border border-zinc-800 flex items-center justify-between">
+                    <span>600 × 1800 px</span>
+                    <span className="text-[10px] text-zinc-500">Rasio 1:3</span>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-zinc-500 block mb-1">Format Berkas</span>
+                  <div className="text-zinc-200 bg-zinc-950 px-2.5 py-1.5 rounded border border-zinc-800 flex items-center justify-between">
+                    <span className="font-medium text-emerald-400">PNG Transparan</span>
+                    <span className="text-[10px] font-mono text-zinc-500">300 DPI</span>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-zinc-500 block mb-1">Ukuran 3 Lubang Foto</span>
+                  <div className="font-mono text-zinc-200 bg-zinc-950 px-2.5 py-1.5 rounded border border-zinc-800">
+                    500 × 333 px
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-zinc-500 block mb-1">Koordinat Vertikal (Y) Slot:</span>
+                  <div className="font-mono text-[11px] text-zinc-400 bg-zinc-950 p-2.5 rounded border border-zinc-800 space-y-1">
+                    <div className="flex justify-between"><span>Slot 1 (Atas)</span><span className="text-zinc-200">Y: 250 px</span></div>
+                    <div className="flex justify-between"><span>Slot 2 (Tengah)</span><span className="text-zinc-200">Y: 633 px</span></div>
+                    <div className="flex justify-between"><span>Slot 3 (Bawah)</span><span className="text-zinc-200">Y: 1016 px</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-xl p-4 text-xs text-zinc-400 space-y-2">
+              <div className="flex items-center gap-1.5 text-zinc-300 font-medium">
+                <Info size={13} />
+                <span>Catatan Teknis</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-zinc-500">
+                Biarkan 3 kotak foto dalam kondisi <b>transparan/bolong</b> di Canva atau Photoshop agar foto konsumen otomatis masuk tepat di bawah frame.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Modal Tambah Template Baru */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-100">Tambah Template Baru</h2>
+                <p className="text-xs text-zinc-400 mt-0.5">Tambahkan frame kustom baru ke photobooth</p>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowAddModal(false);
+                  if (newFilePreview) URL.revokeObjectURL(newFilePreview);
+                  setNewFilePreview(null);
+                  setNewFile(null);
+                }}
+                className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTemplate} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                  Nama Template
+                </label>
+                <input 
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="misal: Retro Vintage, Neon Cyber, Cute Pastel"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600"
+                  autoFocus
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                  Ikon / Simbol
+                </label>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="text"
+                    value={newIcon}
+                    onChange={(e) => setNewIcon(e.target.value)}
+                    maxLength={4}
+                    className="w-12 text-center bg-zinc-950 border border-zinc-800 rounded-lg py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-zinc-600"
+                  />
+                  <div className="flex flex-wrap gap-1">
+                    {PRESET_ICONS.map((emoji) => (
+                      <button
+                        type="button"
+                        key={emoji}
+                        onClick={() => setNewIcon(emoji)}
+                        className={`w-7 h-7 text-xs rounded-md border flex items-center justify-center transition-colors ${
+                          newIcon === emoji 
+                            ? 'bg-zinc-800 border-zinc-600 text-white' 
+                            : 'bg-zinc-950 border-zinc-800/80 text-zinc-400 hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                  Berkas Desain Frame (PNG Transparan / JPG)
+                </label>
+
+                <input 
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  ref={newFileInputRef}
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) {
+                      handleNewFileSelect(e.target.files[0]);
+                    }
+                  }}
+                />
+
+                {!newFilePreview ? (
+                  <div 
+                    onClick={() => newFileInputRef.current?.click()}
+                    className="border border-dashed border-zinc-700 hover:border-zinc-500 rounded-lg p-5 flex flex-col items-center justify-center text-center cursor-pointer bg-zinc-950/50 hover:bg-zinc-950 transition-colors"
+                  >
+                    <Upload size={20} className="text-zinc-400 mb-1.5" />
+                    <span className="text-xs font-medium text-zinc-200">Klik untuk memilih berkas</span>
+                    <span className="text-[11px] text-zinc-500 mt-0.5">Ukuran rekomendasi 600 × 1800 px (300 DPI)</span>
+                  </div>
+                ) : (
+                  <div className="border border-zinc-800 bg-zinc-950 rounded-lg p-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-12 bg-zinc-900 border border-zinc-800 rounded flex items-center justify-center p-0.5 shrink-0 overflow-hidden">
+                        <img src={newFilePreview} alt="Preview" className="max-h-full max-w-full object-contain" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-zinc-200 truncate">{newFile?.name}</p>
+                        <span className="text-[11px] text-zinc-500">{(newFile!.size / 1024).toFixed(0)} KB</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => newFileInputRef.current?.click()}
+                      className="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded transition-colors shrink-0"
+                    >
+                      Ganti
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-zinc-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="text-xs font-medium text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingNew || !newName.trim() || !newFile}
+                  className="text-xs font-medium bg-white hover:bg-zinc-200 disabled:bg-zinc-800 text-zinc-950 disabled:text-zinc-500 px-3.5 py-1.5 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 disabled:cursor-not-allowed"
+                >
+                  {isSubmittingNew && <RefreshCw size={12} className="animate-spin" />}
+                  <span>{isSubmittingNew ? 'Menyimpan...' : 'Simpan Template'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

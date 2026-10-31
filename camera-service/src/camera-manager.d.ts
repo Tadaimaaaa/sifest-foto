@@ -1,6 +1,7 @@
 import { CameraStatus, CaptureResult } from './types/camera-types';
 export declare class CameraManager {
     private adapter;
+    private mockAdapter;
     private isCapturing;
     constructor();
     connect(): Promise<void>;

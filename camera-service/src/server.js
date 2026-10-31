@@ -16,8 +16,14 @@ const cameraRoutes = (0, camera_routes_1.createCameraRoutes)(cameraManager);
 app.use('/', cameraRoutes);
 let server;
 async function startServer() {
-    server = app.listen(config_1.config.port, config_1.config.host, () => {
+    server = app.listen(config_1.config.port, config_1.config.host, async () => {
         console.log(`[CameraService] Server started on http://${config_1.config.host}:${config_1.config.port}`);
+        try {
+            await cameraManager.connect();
+        }
+        catch (e) {
+            console.error('[CameraService] Initial connect failed:', e);
+        }
     });
     // Graceful shutdown handling
     const shutdown = async (signal) => {

@@ -2,26 +2,61 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 
-const TEMPLATE_CONFIG = [
-  { id: 'y2k-dreamy', name: 'Y2K Dreamy', icon: '✨' },
-  { id: 'classic', name: 'Classic', icon: '📸' },
-  { id: 'futuristic', name: 'Futuristic', icon: '🚀' },
-  { id: 'fun', name: 'Fun', icon: '🎈' },
+interface TemplateItem {
+  id: string;
+  name: string;
+  icon: string;
+  isBuiltin?: boolean;
+}
+
+const DEFAULT_TEMPLATES: TemplateItem[] = [
+  { id: 'y2k-dreamy', name: 'Y2K Dreamy', icon: '✨', isBuiltin: true },
+  { id: 'classic', name: 'Classic', icon: '📸', isBuiltin: true },
+  { id: 'futuristic', name: 'Futuristic', icon: '🚀', isBuiltin: true },
+  { id: 'fun', name: 'Fun', icon: '🎈', isBuiltin: true },
 ];
+
+async function getTemplatesList(): Promise<TemplateItem[]> {
+  const templatesDir = path.join(process.cwd(), 'public', 'templates');
+  const jsonPath = path.join(templatesDir, 'templates.json');
+  try {
+    const raw = await fs.readFile(jsonPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed;
+    }
+  } catch {}
+
+  // Initialize with DEFAULT_TEMPLATES if missing
+  try {
+    await fs.mkdir(templatesDir, { recursive: true });
+    await fs.writeFile(jsonPath, JSON.stringify(DEFAULT_TEMPLATES, null, 2), 'utf-8');
+  } catch {}
+  return DEFAULT_TEMPLATES;
+}
+
+async function saveTemplatesList(list: TemplateItem[]) {
+  const templatesDir = path.join(process.cwd(), 'public', 'templates');
+  const jsonPath = path.join(templatesDir, 'templates.json');
+  await fs.mkdir(templatesDir, { recursive: true });
+  await fs.writeFile(jsonPath, JSON.stringify(list, null, 2), 'utf-8');
+}
 
 export async function GET() {
   try {
     const templatesDir = path.join(process.cwd(), 'public', 'templates');
     await fs.mkdir(templatesDir, { recursive: true });
 
+    const templateList = await getTemplatesList();
+
     const templates = await Promise.all(
-      TEMPLATE_CONFIG.map(async (tpl) => {
+      templateList.map(async (tpl) => {
         const pngPath = path.join(templatesDir, `${tpl.id}.png`);
         const jpgPath = path.join(templatesDir, `${tpl.id}.jpg`);
 
         let hasCustom = false;
         let ext = 'png';
-        let updatedAt = null;
+        let updatedAt: string | null = null;
 
         try {
           const stat = await fs.stat(pngPath);
@@ -41,6 +76,7 @@ export async function GET() {
 
         return {
           ...tpl,
+          isBuiltin: Boolean(tpl.isBuiltin),
           hasCustom,
           url: hasCustom ? `/templates/${tpl.id}.${ext}?t=${Date.now()}` : null,
           updatedAt,
@@ -57,17 +93,74 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const templateId = formData.get('templateId') as string;
+    const action = formData.get('action') as string | null;
+    let templateId = (formData.get('templateId') as string | null)?.trim();
+    const name = (formData.get('name') as string | null)?.trim();
+    const icon = (formData.get('icon') as string | null)?.trim() || '🎨';
     const file = formData.get('file') as File | null;
-
-    if (!templateId || !file) {
-      return NextResponse.json({ success: false, error: 'templateId dan file wajib diisi' }, { status: 400 });
-    }
 
     const templatesDir = path.join(process.cwd(), 'public', 'templates');
     await fs.mkdir(templatesDir, { recursive: true });
 
-    // Determine extension
+    const currentList = await getTemplatesList();
+
+    // Case 1: Tambah Template Baru (action === 'create' atau tidak ada templateId tapi ada name & file)
+    if (action === 'create' || (!templateId && name)) {
+      if (!name) {
+        return NextResponse.json({ success: false, error: 'Nama template wajib diisi' }, { status: 400 });
+      }
+      if (!file) {
+        return NextResponse.json({ success: false, error: 'File gambar template wajib diunggah' }, { status: 400 });
+      }
+
+      // Generate unique slug
+      let baseSlug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      if (!baseSlug) baseSlug = `template-${Date.now()}`;
+
+      let uniqueSlug = baseSlug;
+      let counter = 1;
+      while (currentList.some((t) => t.id === uniqueSlug)) {
+        uniqueSlug = `${baseSlug}-${counter}`;
+        counter++;
+      }
+
+      const originalName = file.name.toLowerCase();
+      const isJpg = originalName.endsWith('.jpg') || originalName.endsWith('.jpeg');
+      const ext = isJpg ? 'jpg' : 'png';
+      const filePath = path.join(templatesDir, `${uniqueSlug}.${ext}`);
+
+      const bytes = await file.arrayBuffer();
+      await fs.writeFile(filePath, Buffer.from(bytes));
+
+      const newTemplate: TemplateItem = {
+        id: uniqueSlug,
+        name,
+        icon,
+        isBuiltin: false,
+      };
+
+      currentList.push(newTemplate);
+      await saveTemplatesList(currentList);
+
+      return NextResponse.json({
+        success: true,
+        message: `Template "${name}" berhasil ditambahkan dan langsung aktif!`,
+        template: {
+          ...newTemplate,
+          hasCustom: true,
+          url: `/templates/${uniqueSlug}.${ext}?t=${Date.now()}`,
+        },
+      });
+    }
+
+    // Case 2: Update Desain Template yang Sudah Ada
+    if (!templateId || !file) {
+      return NextResponse.json({ success: false, error: 'templateId dan file wajib diisi' }, { status: 400 });
+    }
+
     const originalName = file.name.toLowerCase();
     const isJpg = originalName.endsWith('.jpg') || originalName.endsWith('.jpeg');
     const ext = isJpg ? 'jpg' : 'png';
@@ -80,12 +173,29 @@ export async function POST(req: NextRequest) {
     } catch {}
 
     const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    await fs.writeFile(filePath, buffer);
+    await fs.writeFile(filePath, Buffer.from(bytes));
+
+    // Update name / icon in templates.json if provided
+    let listChanged = false;
+    const updatedList = currentList.map((tpl) => {
+      if (tpl.id === templateId) {
+        listChanged = true;
+        return {
+          ...tpl,
+          name: name || tpl.name,
+          icon: icon || tpl.icon,
+        };
+      }
+      return tpl;
+    });
+
+    if (listChanged) {
+      await saveTemplatesList(updatedList);
+    }
 
     return NextResponse.json({
       success: true,
-      message: `Template ${templateId} berhasil diunggah!`,
+      message: `Desain template "${templateId}" berhasil diperbarui!`,
       url: `/templates/${templateId}.${ext}?t=${Date.now()}`,
     });
   } catch (error: any) {
@@ -106,20 +216,36 @@ export async function DELETE(req: NextRequest) {
     const pngPath = path.join(templatesDir, `${templateId}.png`);
     const jpgPath = path.join(templatesDir, `${templateId}.jpg`);
 
-    let deleted = false;
+    const currentList = await getTemplatesList();
+    const existing = currentList.find((t) => t.id === templateId);
+
+    // Delete image files on disk
+    let fileDeleted = false;
     try {
       await fs.unlink(pngPath);
-      deleted = true;
+      fileDeleted = true;
     } catch {}
-
     try {
       await fs.unlink(jpgPath);
-      deleted = true;
+      fileDeleted = true;
     } catch {}
 
+    if (existing && !existing.isBuiltin) {
+      // Custom user-added template: remove from registry completely
+      const filtered = currentList.filter((t) => t.id !== templateId);
+      await saveTemplatesList(filtered);
+      return NextResponse.json({
+        success: true,
+        message: `Template "${existing.name}" berhasil dihapus secara permanen.`,
+      });
+    }
+
+    // Built-in template: reset custom design file back to default
     return NextResponse.json({
       success: true,
-      message: deleted ? `Template ${templateId} berhasil direset ke bawaan` : 'File template tidak ditemukan',
+      message: fileDeleted
+        ? `Desain template "${existing?.name || templateId}" berhasil direset ke bawaan sistem.`
+        : 'Desain template sudah menggunakan bawaan sistem.',
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

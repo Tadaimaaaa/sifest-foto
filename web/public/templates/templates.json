@@ -1,0 +1,26 @@
+[
+  {
+    "id": "y2k-dreamy",
+    "name": "Y2K Dreamy",
+    "icon": "✨",
+    "isBuiltin": true
+  },
+  {
+    "id": "classic",
+    "name": "Classic",
+    "icon": "📸",
+    "isBuiltin": true
+  },
+  {
+    "id": "futuristic",
+    "name": "Futuristic",
+    "icon": "🚀",
+    "isBuiltin": true
+  },
+  {
+    "id": "fun",
+    "name": "Fun",
+    "icon": "🎈",
+    "isBuiltin": true
+  }
+]

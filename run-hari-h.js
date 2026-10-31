@@ -19,6 +19,26 @@ if (!fs.existsSync(storageDir)) {
   fs.mkdirSync(storageDir, { recursive: true });
 }
 
+// Free up occupied port if any stale process exists
+function freePort(port) {
+  try {
+    const stdout = execSync(`netstat -ano | findstr :${port}`, { stdio: ['pipe', 'pipe', 'ignore'] }).toString();
+    const lines = stdout.split('\n');
+    for (const line of lines) {
+      if (line.includes('LISTENING')) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && parseInt(pid) > 0 && parseInt(pid) !== process.pid) {
+          try {
+            execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+            console.log(`   🧹 Membersihkan proses lama yang menempel di port ${port} (PID: ${pid})`);
+          } catch (e) {}
+        }
+      }
+    }
+  } catch (e) {}
+}
+
 // Find cloudflared binary
 function getCloudflaredPath() {
   const possiblePaths = [
@@ -40,16 +60,37 @@ function getCloudflaredPath() {
   return null;
 }
 
-// Find local IPv4 address
+// Find local IPv4 address prioritizing physical Wi-Fi over virtual adapters
 function getLocalIp() {
   const interfaces = os.networkInterfaces();
+  const candidates = [];
+
   for (const name of Object.keys(interfaces)) {
+    const lowerName = name.toLowerCase();
+    // Skip virtual adapters (VirtualBox, VMware, WSL, vEthernet)
+    if (lowerName.includes('virtual') || lowerName.includes('vbox') || lowerName.includes('vmware') || lowerName.includes('wsl')) {
+      continue;
+    }
+
     for (const iface of interfaces[name]) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
+        if (iface.address.startsWith('192.168.56.') || iface.address.startsWith('169.254.')) continue;
+        
+        const isWifi = lowerName.includes('wi-fi') || lowerName.includes('wifi') || lowerName.includes('wireless') || lowerName.includes('wlan');
+        candidates.push({
+          ip: iface.address,
+          name,
+          isWifi,
+        });
       }
     }
   }
+
+  // Prioritize Wi-Fi adapter
+  const wifiCandidate = candidates.find(c => c.isWifi);
+  if (wifiCandidate) return wifiCandidate.ip;
+  if (candidates.length > 0) return candidates[0].ip;
+
   return 'localhost';
 }
 
@@ -68,6 +109,10 @@ function checkDigiCamControl() {
 }
 
 async function main() {
+  // Pre-cleanup ports to avoid EADDRINUSE crash
+  freePort(3000);
+  freePort(3001);
+
   console.log('🔍 [1/4] Memeriksa koneksi digiCamControl (Kamera DSLR)...');
   const dccRunning = await checkDigiCamControl();
   if (dccRunning) {
@@ -87,12 +132,20 @@ async function main() {
     shell: true,
   });
 
+  cameraService.on('error', (err) => {
+    console.error('❌ Gagal menjalankan Camera Service:', err.message);
+  });
+
   // 2. Start Web Server (Port 3000)
   console.log('🚀 [3/4] Menyalakan Web Kiosk Next.js (Port 3000)...');
   const webServer = spawn('npm.cmd', ['run', 'dev'], {
     cwd: path.join(rootDir, 'web'),
     stdio: 'inherit',
     shell: true,
+  });
+
+  webServer.on('error', (err) => {
+    console.error('❌ Gagal menjalankan Web Server:', err.message);
   });
 
   // 3. Start Cloudflare Tunnel
@@ -145,7 +198,7 @@ async function main() {
         console.log(`  🌐  LINK BUKA DI IPAD (Cloud)   : ${liveTunnelUrl}/photobooth`);
         console.log(`  🖥️  Layar di Laptop             : http://localhost:3000/photobooth`);
         console.log(`  💳  Payment Gateway             : DOKU (Otomatis Webhook & QRIS)`);
-        console.log(`  ⚙️  Panel Admin Template        : http://localhost:3000/admin (PIN: 12345)`);
+        console.log(`  ⚙️  Panel Admin Template        : http://${localIp}:3000/photobooth/admin (PIN: 12345)`);
         console.log('================================================================');
         console.log('  👉 DI IPAD: Buka salah satu link di atas pada browser Safari!');
         console.log('  👉 Agar Fullscreen di iPad: Tap tombol Share -> Add to Home Screen');
@@ -166,8 +219,16 @@ async function main() {
       console.log(`[Tunnel] Process exited with code ${code}`);
     });
   } else {
-    console.log('⚠️  cloudflared.exe tidak ditemukan. Jalankan tunnel manual dengan start-tunnel.bat');
+    const localIp = getLocalIp();
+    console.log('⚠️  cloudflared.exe tidak ditemukan. Sistem berjalan dalam mode lokal.');
+    console.log(`👉 Akses di iPad (1 WiFi): http://${localIp}:3000/photobooth`);
+    try {
+      execSync('start http://localhost:3000/photobooth', { stdio: 'ignore', shell: true });
+    } catch (e) {}
   }
+
+  // Keep event loop alive indefinitely so process never terminates unexpectedly
+  setInterval(() => {}, 1000 * 60 * 60);
 
   // Graceful shutdown on Ctrl+C
   const cleanup = () => {
@@ -184,4 +245,6 @@ async function main() {
   process.on('SIGTERM', cleanup);
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  console.error('Fatal error in launcher:', err);
+});

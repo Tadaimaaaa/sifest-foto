@@ -62,6 +62,14 @@ app.prepare().then(() => {
       sessionManager.abortSession();
     });
 
+    socket.on('session:apply_filter', (data) => {
+      sessionManager.applyFilter(data?.filterId || 'normal');
+    });
+
+    socket.on('session:apply-filter', (data) => {
+      sessionManager.applyFilter(data?.filterId || 'normal');
+    });
+
     socket.on('session:reset', () => {
       sessionManager.resetSession();
     });
@@ -71,7 +79,7 @@ app.prepare().then(() => {
     });
   });
 
-  server.listen(port, () => {
-    console.log(`> Ready on http://localhost:${port}`);
+  server.listen(port, hostname, () => {
+    console.log(`> Ready on http://localhost:${port} and network http://${hostname}:${port}`);
   });
 });

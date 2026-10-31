@@ -45,8 +45,29 @@ export async function GET(req: NextRequest) {
   const currentAbort = new AbortController();
   activeAbortController = currentAbort;
 
-  // 2. Wake up digiCamControl live view immediately
+  // 2. Wake up digiCamControl live view
   wakeUpLiveView();
+
+  // 3. Quick check: Is digiCamControl responding?
+  const initialFrame = await getLiveFrame();
+  if (!initialFrame || initialFrame.length < 500) {
+    if (activeAbortController === currentAbort) {
+      activeAbortController = null;
+    }
+    return new Response(
+      JSON.stringify({
+        error: 'digicam_unavailable',
+        message: 'digiCamControl web server is not responding on port 5513. Pastikan aplikasi digiCamControl dibuka dan DSLR terhubung.',
+      }),
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store',
+        },
+      }
+    );
+  }
 
   let isClosed = false;
   req.signal.addEventListener('abort', () => {
@@ -57,6 +78,21 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const boundary = 'frame';
+
+      // Send initial frame immediately
+      try {
+        const header = `--${boundary}\r\nContent-Type: image/jpeg\r\nContent-Length: ${initialFrame.length}\r\n\r\n`;
+        controller.enqueue(
+          Buffer.concat([
+            Buffer.from(header),
+            initialFrame,
+            Buffer.from('\r\n'),
+          ])
+        );
+      } catch {
+        return;
+      }
+
       let consecutiveMisses = 0;
 
       while (!isClosed && !currentAbort.signal.aborted) {
@@ -76,8 +112,12 @@ export async function GET(req: NextRequest) {
             await new Promise((r) => setTimeout(r, 35));
           } else {
             consecutiveMisses++;
-            // If frames are missing for more than ~1 second, poke digiCamControl to ensure mirror is up
-            if (consecutiveMisses % 15 === 0) {
+            // If frames are missing for more than ~1.5 seconds, close stream so client falls back
+            if (consecutiveMisses > 25) {
+              console.warn('[CameraLive] digiCamControl disconnected, terminating stream.');
+              break;
+            }
+            if (consecutiveMisses % 8 === 0) {
               wakeUpLiveView();
             }
             await new Promise((r) => setTimeout(r, 60));

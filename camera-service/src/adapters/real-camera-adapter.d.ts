@@ -10,6 +10,7 @@ export declare class RealCameraAdapter implements CameraAdapter {
     private runCommand;
     private waitForFile;
     private verifyJpeg;
+    private ensureLiveView;
     private createErrorResult;
 }
 //# sourceMappingURL=real-camera-adapter.d.ts.map
