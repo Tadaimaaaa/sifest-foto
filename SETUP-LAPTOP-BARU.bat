@@ -127,11 +127,24 @@ if !CF_FOUND! equ 1 (
     echo     [INFO] Cloudflared belum terpasang [opsional untuk QRIS / share online via Cloudflare].
 )
 
-:: Cek file konfigurasi .env.local
-if exist "web\.env.local" (
-    echo     [OK] File konfigurasi web\.env.local sudah tersedia!
+:: Cek file konfigurasi web\.env.local
+if not exist "web\.env.local" (
+    if exist "web\.env.example" (
+        copy "web\.env.example" "web\.env.local" >nul
+        echo     [OK] Berhasil membuat web\.env.local otomatis dari template!
+    ) else (
+        echo     [PERINGATAN] File web\.env.local belum ditemukan!
+    )
 ) else (
-    echo     [PERINGATAN] File web\.env.local belum ditemukan!
+    echo     [OK] File konfigurasi web\.env.local sudah tersedia!
+)
+
+:: Cek file konfigurasi camera-service\.env
+if not exist "camera-service\.env" (
+    if exist "camera-service\.env.example" (
+        copy "camera-service\.env.example" "camera-service\.env" >nul
+        echo     [OK] Berhasil membuat camera-service\.env otomatis dari template!
+    )
 )
 
 :: Pastikan folder storage ada
