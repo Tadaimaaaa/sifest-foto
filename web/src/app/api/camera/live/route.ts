@@ -24,9 +24,13 @@ function getLiveFrame(): Promise<Buffer | null> {
 
 function wakeUpLiveView(): void {
   try {
-    const req = http.get('http://127.0.0.1:5513/api?CMD=LiveView_Start', () => {});
-    req.on('error', () => {});
-    req.setTimeout(500, () => req.destroy());
+    const req1 = http.get('http://127.0.0.1:5513/?CMD=LiveViewWnd_Show', () => {});
+    req1.on('error', () => {});
+    req1.setTimeout(500, () => req1.destroy());
+
+    const req2 = http.get('http://127.0.0.1:5513/?CMD=LiveView_Start', () => {});
+    req2.on('error', () => {});
+    req2.setTimeout(500, () => req2.destroy());
   } catch {}
 }
 
