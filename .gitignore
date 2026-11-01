@@ -25,6 +25,10 @@ web/.env
 web/.env.local
 camera-service/.env
 
+# Binaries
+cloudflared.exe
+*.exe
+
 # Logs & Debug
 *.log
 npm-debug.log*

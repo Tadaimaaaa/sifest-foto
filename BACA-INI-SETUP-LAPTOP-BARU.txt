@@ -48,3 +48,4 @@ Catatan Tambahan:
 - Tombol "Layar Penuh" di iPad sekarang sudah tersedia langsung di pojok kanan atas layar iPad.
 - Fitur "Ulang 1 Foto" (retake pose) sudah otomatis aktif di layar pemilihan filter.
 ================================================================
+

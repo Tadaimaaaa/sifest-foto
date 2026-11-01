@@ -42,6 +42,7 @@ function freePort(port) {
 // Find cloudflared binary
 function getCloudflaredPath() {
   const possiblePaths = [
+    path.join(__dirname, 'cloudflared.exe'),
     'cloudflared',
     'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe',
     'C:\\Program Files\\cloudflared\\cloudflared.exe',
