@@ -47,13 +47,18 @@ export async function GET(
 
     const fileBuffer = await fs.readFile(filePath);
     
+    const isDownload = req.nextUrl.searchParams.get('download') === '1' || type === 'final';
+    const headers: Record<string, string> = {
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    };
+
+    if (isDownload) {
+      headers['Content-Disposition'] = `attachment; filename="SI-FEST-2026-${sessionId}.jpg"`;
+    }
+
     // Set caching headers aggressively for immutable photos
-    return new NextResponse(fileBuffer, {
-      headers: {
-        'Content-Type': 'image/jpeg',
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      },
-    });
+    return new NextResponse(fileBuffer, { headers });
   } catch (error) {
     console.error(`Error serving image ${filePath}:`, error);
     return new NextResponse('Internal Server Error', { status: 500 });
