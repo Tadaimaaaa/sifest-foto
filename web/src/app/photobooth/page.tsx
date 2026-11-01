@@ -55,6 +55,7 @@ const WebcamMirror = ({ isCapturing }: { isCapturing?: boolean }) => {
   const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [isWebcamLoading, setIsWebcamLoading] = useState<boolean>(false);
+  const [isWebcamMirrored, setIsWebcamMirrored] = useState<boolean>(false);
 
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const dslrFailCountRef = useRef<number>(0);
@@ -166,8 +167,8 @@ const WebcamMirror = ({ isCapturing }: { isCapturing?: boolean }) => {
               console.warn("Koneksi stream DSLR gagal atau digiCamControl belum aktif.");
               dslrFailCountRef.current++;
               
-              if (dslrFailCountRef.current >= 1) {
-                // Auto fallback to Webcam immediately so preview is NEVER blank/stuck!
+              if (dslrFailCountRef.current >= 4) {
+                // Auto fallback to Webcam after 4 consecutive fails so preview is not stuck, but avoids false dropouts during capture
                 setCameraMode('webcam');
                 setDslrConnected(false);
                 setIsConnectingDslr(false);
@@ -177,7 +178,7 @@ const WebcamMirror = ({ isCapturing }: { isCapturing?: boolean }) => {
                 retryTimeoutRef.current = setTimeout(() => {
                   retryTimeoutRef.current = null;
                   setStreamKey(Date.now());
-                }, 600);
+                }, 500);
               }
             }}
           />
@@ -197,7 +198,7 @@ const WebcamMirror = ({ isCapturing }: { isCapturing?: boolean }) => {
             autoPlay 
             playsInline 
             muted 
-            className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" 
+            className={`absolute inset-0 w-full h-full object-cover ${isWebcamMirrored ? 'scale-x-[-1]' : ''}`} 
           />
           {isWebcamLoading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 text-white z-10 gap-3">
@@ -229,6 +230,13 @@ const WebcamMirror = ({ isCapturing }: { isCapturing?: boolean }) => {
           <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-white text-xs font-bold shadow-lg">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
             <span>📹 Webcam Laptop</span>
+            <button
+              onClick={() => setIsWebcamMirrored(prev => !prev)}
+              className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded-full text-[11px] transition"
+              title="Ubah orientasi cermin webcam"
+            >
+              {isWebcamMirrored ? '🪞 Cermin' : '📷 Asli'}
+            </button>
             {availableDevices.length > 1 && (
               <button
                 onClick={handleSwitchWebcam}
@@ -471,19 +479,15 @@ export default function PhotoboothKiosk() {
     templateSelectionRef.current = templateSelection;
   }, [templateSelection]);
 
-  // 1. Template selection 60-second countdown (auto-start when timer reaches 0)
+  // 1. Template selection 60-second countdown (auto-start when timer reaches 0 only on template step and no session exists)
   useEffect(() => {
-    if (step !== 'template') {
+    if (step !== 'template' || session !== null || isStarting) {
       setTemplateTimer(60);
       return;
     }
 
     if (!templateSelection && availableTemplates.length > 0) {
       setTemplateSelection(availableTemplates[0].id);
-    }
-
-    if ((session && session.status === 'active') || isStarting) {
-      return;
     }
 
     const timer = setInterval(() => {
@@ -499,11 +503,11 @@ export default function PhotoboothKiosk() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [step, session?.status, isStarting, socket, availableTemplates]);
+  }, [step, session, isStarting, availableTemplates]);
 
   // 2. Payment method 60-second inactivity timer (returns to welcome)
   useEffect(() => {
-    if (step !== 'payment') {
+    if (step !== 'payment' || session !== null) {
       setPaymentTimer(60);
       return;
     }
@@ -518,11 +522,11 @@ export default function PhotoboothKiosk() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [step]);
+  }, [step, session]);
 
   // 3. Cash verification 60-second timer (returns to payment)
   useEffect(() => {
-    if (step !== 'cash_verification') {
+    if (step !== 'cash_verification' || session !== null) {
       setCashTimer(60);
       return;
     }
@@ -538,11 +542,11 @@ export default function PhotoboothKiosk() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [step]);
+  }, [step, session]);
 
   // 4. QRIS 180-second validity countdown (returns to payment on timeout)
   useEffect(() => {
-    if (step !== 'qris_payment' || paymentSuccess) {
+    if (step !== 'qris_payment' || paymentSuccess || session !== null) {
       setQrisTimer(180);
       return;
     }
@@ -562,7 +566,7 @@ export default function PhotoboothKiosk() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [step, paymentSuccess]);
+  }, [step, paymentSuccess, session]);
 
   // 5. Result screen 90-second countdown (auto reset session)
   useEffect(() => {
@@ -713,6 +717,7 @@ export default function PhotoboothKiosk() {
     if (!socket || isStarting) return;
     const tpl = overrideTemplateId || templateSelectionRef.current || templateSelection || availableTemplates[0]?.id || 'y2k-dreamy';
     setIsStarting(true);
+    setStep('welcome'); // Exit 'template' step immediately so template countdown timer never runs in background
     socket.emit('session:start', { templateId: tpl });
     // Reset starting state after a timeout in case of failure without error broadcast
     setTimeout(() => setIsStarting(false), 3000);
