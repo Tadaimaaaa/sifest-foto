@@ -1,0 +1,50 @@
+================================================================
+   PANDUAN SETUP PHOTOBOOTH SI FEST 2026 UNTUK LAPTOP BARU
+================================================================
+
+Jika Anda ingin menjalankan Photobooth di laptop baru, ikuti 4 langkah mudah berikut:
+
+----------------------------------------------------------------
+LANGKAH 1: INSTAL 2 APLIKASI UTAMA (GRATIS)
+----------------------------------------------------------------
+1. Node.js (LTS):
+   - Unduh dari: https://nodejs.org/
+   - Klik Next sampai Finish (pilih opsi default).
+   - Setelah instal selesai, restart laptop sekali.
+
+2. digiCamControl:
+   - Unduh dari: https://digicamcontrol.com/download
+   - Instal seperti biasa.
+   - Buka aplikasi digiCamControl:
+     * Masuk ke menu: File -> Settings -> pilih tab "Webserver"
+     * Centang kotak "Enable Web Server" (port default: 5513)
+     * Klik OK / Simpan.
+
+----------------------------------------------------------------
+LANGKAH 2: SALIN FOLDER INI KE LAPTOP BARU
+----------------------------------------------------------------
+- Salin seluruh folder 'sifest-foto' ini ke laptop baru (bisa lewat Flashdisk).
+- Letakkan di lokasi yang Anda inginkan (misal di Drive D: atau Desktop).
+
+----------------------------------------------------------------
+LANGKAH 3: JALANKAN SETUP (CUKUP 1 KALI SAJA)
+----------------------------------------------------------------
+- Di laptop baru, buka folder 'sifest-foto'.
+- Klik 2x file: SETUP-LAPTOP-BARU.bat
+- Tunggu hingga proses instalasi modul selesai (sekitar 1-2 menit).
+- Layar akan menampilkan tulisan:
+  "SETUP SELESAI! LAPTOP INI SUDAH SIAP UNTUK HARI H"
+
+----------------------------------------------------------------
+LANGKAH 4: JALANKAN PHOTOBOOTH
+----------------------------------------------------------------
+1. Hubungkan kamera DSLR ke laptop dengan kabel USB (nyalakan kamera).
+2. Buka aplikasi digiCamControl (pastikan nama kamera terbaca di layar).
+3. Klik 2x file: JALANKAN-HARI-H.bat
+4. Selesai! Layar photobooth di laptop dan link iPad akan otomatis muncul.
+
+================================================================
+Catatan Tambahan:
+- Tombol "Layar Penuh" di iPad sekarang sudah tersedia langsung di pojok kanan atas layar iPad.
+- Fitur "Ulang 1 Foto" (retake pose) sudah otomatis aktif di layar pemilihan filter.
+================================================================
