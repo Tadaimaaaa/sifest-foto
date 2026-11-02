@@ -131,6 +131,7 @@ export class SessionManager {
 
     console.log(`[Session] Created ${sessionId}`);
     wakeUpLiveView();
+    cameraClient.prepareCapture().catch(() => {});
 
     // Start flow asynchronously
     this.runSessionFlow().catch((err) => {
@@ -248,6 +249,7 @@ export class SessionManager {
         // Countdown
         this.state = `PHOTO_${i}_COUNTDOWN` as SessionState;
         console.log(`[Session] Photo ${i} countdown started`);
+        cameraClient.prepareCapture().catch(() => {});
         await this.runCountdown(i, signal);
 
         // Capture
@@ -321,6 +323,7 @@ export class SessionManager {
           // Countdown
           this.state = `PHOTO_${k}_COUNTDOWN` as SessionState;
           console.log(`[Session] Retake: Photo ${k} countdown started`);
+          cameraClient.prepareCapture().catch(() => {});
           this.broadcast('countdown:start', { photoIndex: k, duration: 5, remaining: 5, isRetake: true });
 
           for (let s = 5; s >= 1; s--) {

@@ -6,6 +6,7 @@ export declare class CameraManager {
     constructor();
     connect(): Promise<void>;
     disconnect(): Promise<void>;
+    prepareCapture(): Promise<void>;
     getStatus(): Promise<CameraStatus>;
     capture(sessionId: string, photoIndex: number): Promise<CaptureResult>;
 }

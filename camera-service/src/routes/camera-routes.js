@@ -40,6 +40,15 @@ function createCameraRoutes(cameraManager) {
             res.status(500).json({ error: 'CAMERA_DISCONNECT_FAILED', message: error.message });
         }
     });
+    router.post('/prepare', async (req, res) => {
+        try {
+            await cameraManager.prepareCapture();
+            res.json({ success: true });
+        }
+        catch {
+            res.json({ success: false });
+        }
+    });
     router.post('/capture', async (req, res) => {
         try {
             const { sessionId, photoIndex } = req.body;

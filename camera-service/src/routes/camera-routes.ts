@@ -41,6 +41,15 @@ export function createCameraRoutes(cameraManager: CameraManager): Router {
     }
   });
 
+  router.post('/prepare', async (req: Request, res: Response) => {
+    try {
+      await cameraManager.prepareCapture();
+      res.json({ success: true });
+    } catch {
+      res.json({ success: false });
+    }
+  });
+
   router.post('/capture', async (req: Request, res: Response) => {
     try {
       const { sessionId, photoIndex } = req.body;

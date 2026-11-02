@@ -5,5 +5,6 @@ export interface CameraAdapter {
     getStatus(): Promise<CameraStatus>;
     capture(sessionId: string, photoIndex: number): Promise<CaptureResult>;
     isReady(): Promise<boolean>;
+    prepareCapture?(): Promise<void>;
 }
 //# sourceMappingURL=camera-adapter.d.ts.map

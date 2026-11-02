@@ -35,6 +35,14 @@ class CameraManager {
         }
         catch { }
     }
+    async prepareCapture() {
+        try {
+            if (this.adapter && typeof this.adapter.prepareCapture === 'function') {
+                await this.adapter.prepareCapture();
+            }
+        }
+        catch { }
+    }
     async getStatus() {
         if (config_1.config.adapter === 'real') {
             try {

@@ -41,6 +41,15 @@ export class CameraClient {
     }
   }
 
+  async prepareCapture(): Promise<boolean> {
+    try {
+      const res = await fetch(`${CAMERA_SERVICE_URL}/prepare`, { method: 'POST' });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
   async capture(sessionId: string, photoIndex: number): Promise<CaptureResult> {
     try {
       const res = await fetch(`${CAMERA_SERVICE_URL}/capture`, {

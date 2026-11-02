@@ -6,6 +6,7 @@ export declare class RealCameraAdapter implements CameraAdapter {
     private lastPhotoHead;
     connect(): Promise<void>;
     disconnect(): Promise<void>;
+    prepareCapture(): Promise<void>;
     private checkHttpServer;
     getStatus(): Promise<CameraStatus>;
     isReady(): Promise<boolean>;

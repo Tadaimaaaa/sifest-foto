@@ -84,6 +84,8 @@ class RealCameraAdapter {
         if (isAlive) {
             this.status = 'ready';
             console.log('[RealCameraAdapter] Connected to digiCamControl Web Server at port 5513');
+            // Catat baseline awal foto yang sedang ada di digiCamControl saat connect
+            this.prepareCapture().catch(() => { });
         }
         else {
             this.status = 'ready';
@@ -95,6 +97,21 @@ class RealCameraAdapter {
         this.lastPhotoLen = 0;
         this.lastPhotoHead = null;
         console.log('[RealCameraAdapter] Disconnected');
+    }
+    // Dipanggil otomatis di background saat countdown 5 detik berjalan
+    // Ini mengunci ukuran foto lama ke memori SEBELUM shutter ditekan, tanpa jeda sama sekali
+    async prepareCapture() {
+        try {
+            const current = await httpGet('http://127.0.0.1:5513/preview.jpg', 2000);
+            if (current && current.length > 10000 && current[0] === 0xFF && current[1] === 0xD8) {
+                this.lastPhotoLen = current.length;
+                this.lastPhotoHead = current.subarray(0, 64);
+                console.log(`[RealCameraAdapter] Baseline photo locked during countdown: ${this.lastPhotoLen} bytes`);
+            }
+            // Kirim sinyal LiveView_Focus agar kamera mengunci fokus ke orang saat berpose
+            http.get('http://127.0.0.1:5513/?CMD=LiveView_Focus', (res) => res.resume()).on('error', () => { });
+        }
+        catch { }
     }
     async checkHttpServer() {
         return new Promise((resolve) => {
@@ -140,39 +157,48 @@ class RealCameraAdapter {
             const fileName = `photo-${photoIndex}.jpg`;
             const filePath = path.join(sessionDir, fileName);
             console.log(`[RealCameraAdapter] Triggering capture for ${fileName} INSTANTLY...`);
+            // Kunci nilai baseline sebelum tombol jepret ditekan
+            const initialBaselineLen = this.lastPhotoLen;
+            const initialBaselineHead = this.lastPhotoHead;
             // 1. TRIGGER CEKREK SEKETIKA pada milidetik 0!
-            // TIDAK ada download baseline yang memperlambat rana kamera!
             triggerCapture();
-            // 2. Beri jeda 1 detik agar kamera membuka rana dan mentransfer file via USB tanpa dibebani polling
-            await new Promise((r) => setTimeout(r, 1000));
-            // 3. Polling sampai foto baru selesai ditransfer oleh digiCamControl
+            // 2. Beri waktu kamera Canon 700D membuka rana dan mentransfer file via USB
+            // (Kamera DSLR butuh ~1.5 detik untuk menyelesaikan transfer USB ke laptop)
+            await new Promise((r) => setTimeout(r, 1400));
+            // 3. Polling sampai foto BARU benar-benar selesai ditransfer oleh digiCamControl
             let imageBuffer = null;
             const pollStart = Date.now();
-            while (Date.now() - pollStart < 8000) {
+            while (Date.now() - pollStart < 9000) {
                 const current = await httpGet('http://127.0.0.1:5513/preview.jpg', 2500);
                 if (current &&
                     current.length > 10000 &&
                     current[0] === 0xFF &&
                     current[1] === 0xD8) {
-                    // Bandingkan dengan metadata foto sebelumnya yang disimpan di memory (tanpa beban jaringan)
-                    if (this.lastPhotoLen > 0 && this.lastPhotoHead) {
-                        if (current.length !== this.lastPhotoLen || !current.subarray(0, 64).equals(this.lastPhotoHead)) {
+                    // Bandingkan dengan baseline foto sebelum shutter ditekan
+                    if (initialBaselineLen > 0 && initialBaselineHead) {
+                        // Foto BARU pasti memiliki ukuran atau byte header yang berbeda dari foto lama
+                        if (current.length !== initialBaselineLen || !current.subarray(0, 64).equals(initialBaselineHead)) {
                             imageBuffer = current;
                             this.lastPhotoLen = current.length;
                             this.lastPhotoHead = current.subarray(0, 64);
+                            console.log(`[RealCameraAdapter] New photo confirmed: ${current.length} bytes (was ${initialBaselineLen})`);
                             break;
                         }
                     }
                     else {
-                        imageBuffer = current;
-                        this.lastPhotoLen = current.length;
-                        this.lastPhotoHead = current.subarray(0, 64);
-                        break;
+                        // Jika baseline awal kosong, tunggu minimal 2.5 detik agar transfer foto yang baru jepret selesai
+                        if (Date.now() - pollStart > 2500) {
+                            imageBuffer = current;
+                            this.lastPhotoLen = current.length;
+                            this.lastPhotoHead = current.subarray(0, 64);
+                            console.log(`[RealCameraAdapter] First photo confirmed without prior baseline: ${current.length} bytes`);
+                            break;
+                        }
                     }
                 }
-                await new Promise((r) => setTimeout(r, 350));
+                await new Promise((r) => setTimeout(r, 300));
             }
-            // Safety fallback jika preview.jpg valid
+            // Safety fallback
             if (!imageBuffer) {
                 const lastCheck = await httpGet('http://127.0.0.1:5513/preview.jpg', 2500);
                 if (lastCheck && lastCheck.length > 10000 && lastCheck[0] === 0xFF && lastCheck[1] === 0xD8) {

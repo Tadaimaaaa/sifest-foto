@@ -35,6 +35,14 @@ export class CameraManager {
     } catch {}
   }
 
+  async prepareCapture(): Promise<void> {
+    try {
+      if (this.adapter && typeof this.adapter.prepareCapture === 'function') {
+        await this.adapter.prepareCapture();
+      }
+    } catch {}
+  }
+
   async getStatus(): Promise<CameraStatus> {
     if (config.adapter === 'real') {
       try {
