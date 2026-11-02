@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 
 const execAsync = promisify(exec);
 
@@ -14,14 +15,12 @@ export class MockPrintAdapter implements PrintAdapter {
   async print(jobId: string, filePath: string, copies: number): Promise<void> {
     console.log(`[MockPrintAdapter] Simulating print for ${jobId} (Copies: ${copies})`);
     console.log(`[MockPrintAdapter] Target file: ${filePath}`);
-    
-    // Simulate printing delay
     await new Promise(resolve => setTimeout(resolve, 2000));
     console.log(`[MockPrintAdapter] Print successful for ${jobId}`);
   }
 
   async isPrinterReady(): Promise<boolean> {
-    return true; // Always ready for mock
+    return true;
   }
 }
 
@@ -32,57 +31,72 @@ export class WindowsPrintAdapter implements PrintAdapter {
     this.printerName = process.env.PRINTER_NAME;
   }
 
+  async getTargetPrinter(): Promise<string> {
+    if (this.printerName && this.printerName.trim() !== '') {
+      return this.printerName;
+    }
+    // Deteksi printer default di Windows secara otomatis
+    try {
+      const { stdout } = await execAsync(
+        `powershell -NoProfile -Command "Add-Type -AssemblyName System.Drawing; [System.Drawing.Printing.PrinterSettings]::new().PrinterName"`
+      );
+      const detected = stdout.trim();
+      if (detected) {
+        this.printerName = detected;
+        return detected;
+      }
+    } catch {}
+    return 'EPSON L360 Series';
+  }
+
   async isPrinterReady(): Promise<boolean> {
-    // Basic check for Windows: if PRINTER_NAME is set, assume it might be ready.
-    // In production, you would run a PowerShell command to check printer status.
-    return !!this.printerName;
+    try {
+      const { stdout } = await execAsync(
+        `powershell -NoProfile -Command "Add-Type -AssemblyName System.Drawing; [System.Drawing.Printing.PrinterSettings]::new().IsValid"`
+      );
+      return stdout.trim().toLowerCase() === 'true';
+    } catch {
+      return false;
+    }
   }
 
   async print(jobId: string, filePath: string, copies: number): Promise<void> {
-    if (!this.printerName) {
-      throw new Error('PRINTER_NAME environment variable is not configured.');
-    }
-
+    const absoluteFile = path.resolve(filePath);
     try {
-      await fs.access(filePath);
+      await fs.access(absoluteFile);
     } catch {
-      throw new Error(`File to print not found: ${filePath}`);
+      throw new Error(`File foto cetak tidak ditemukan: ${absoluteFile}`);
     }
 
-    // SECURITY WARNING: In a real implementation, you MUST thoroughly sanitize filePath and printerName.
-    // For now, we use double quotes, but be extremely careful with command injection on Windows.
-    // We recommend using built-in Windows APIs or safe wrappers (like 'pdf-to-printer' if PDF, or ImageMagick).
-    // Here we use a generic PowerShell approach to print an image.
-    
-    // Validate path
-    if (filePath.includes('"') || filePath.includes(';')) {
-      throw new Error('Invalid characters in file path.');
+    const printer = await this.getTargetPrinter();
+    console.log(`[WindowsPrintAdapter] Mencetak ${absoluteFile} ke printer '${printer}' (${copies} lembar)...`);
+
+    // Cari lokasi print-image.ps1
+    const possibleScriptPaths = [
+      path.resolve(process.cwd(), 'scripts/print-image.ps1'),
+      path.resolve(process.cwd(), 'web/scripts/print-image.ps1'),
+      path.resolve(__dirname, '../../scripts/print-image.ps1'),
+      path.resolve(__dirname, '../../../scripts/print-image.ps1'),
+    ];
+    const scriptPath = possibleScriptPaths.find(p => fsSync.existsSync(p));
+
+    if (!scriptPath) {
+      throw new Error(`Script pencetak print-image.ps1 tidak ditemukan.`);
     }
 
-    // Windows shell print command (placeholder for actual driver command)
-    // Note: PowerShell Start-Process with -Verb Print doesn't easily support copies or specific printers without showing a dialog for images.
-    // In a real environment, you might use an external CLI like IrfanView or SumatraPDF.
-    
-    console.log(`[WindowsPrintAdapter] Sending ${filePath} to printer ${this.printerName}`);
-    
-    // Using a safe placeholder command that simulates printing natively
-    // We throw an error if the user tries to use the Windows adapter without proper CLI tool configured.
-    if (!process.env.PRINT_CLI_TOOL_PATH) {
-      throw new Error('PRINT_CLI_TOOL_PATH not configured. Windows printing requires an external CLI (like IrfanView).');
-    }
+    const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -ImagePath "${absoluteFile}" -PrinterName "${printer}" -Copies ${copies}`;
+    const { stdout, stderr } = await execAsync(cmd, { timeout: 45000 });
 
-    const cliTool = process.env.PRINT_CLI_TOOL_PATH;
-    // Example for IrfanView: i_view64.exe c:\file.jpg /print="Printer Name"
-    const command = `"${cliTool}" "${filePath}" /print="${this.printerName}"`;
-    
-    for (let i = 0; i < copies; i++) {
-       await execAsync(command);
+    if (stderr && stderr.includes('Error')) {
+      throw new Error(stderr.trim());
     }
+    console.log(`[WindowsPrintAdapter] ${stdout.trim()}`);
   }
 }
 
 export function getPrintAdapter(): PrintAdapter {
-  if (process.env.NODE_ENV === 'production' && process.env.PRINTER_NAME) {
+  // Jika berjalan di sistem operasi Windows, selalu gunakan WindowsPrintAdapter langsung ke printer fisik
+  if (process.platform === 'win32') {
     return new WindowsPrintAdapter();
   }
   return new MockPrintAdapter();

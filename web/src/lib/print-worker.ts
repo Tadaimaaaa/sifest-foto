@@ -1,8 +1,28 @@
 import path from 'path';
+import fs from 'fs';
 import { printQueue } from './print-queue';
 import { getPrintAdapter } from './print-adapter';
 
 let isProcessingPrintQueue = false;
+
+function getStorageDir(): string {
+  if (process.env.STORAGE_PATH) {
+    return path.resolve(process.cwd(), process.env.STORAGE_PATH);
+  }
+  const candidate1 = path.resolve(process.cwd(), '../storage');
+  if (fs.existsSync(candidate1)) return candidate1;
+
+  const candidate2 = path.resolve(process.cwd(), 'storage');
+  if (fs.existsSync(candidate2)) return candidate2;
+
+  let current = process.cwd();
+  for (let i = 0; i < 3; i++) {
+    const candidate = path.join(current, 'storage');
+    if (fs.existsSync(candidate)) return candidate;
+    current = path.dirname(current);
+  }
+  return path.resolve(process.cwd(), '../storage');
+}
 
 export async function processPrintQueue() {
   if (isProcessingPrintQueue) return;
@@ -17,8 +37,7 @@ export async function processPrintQueue() {
       return;
     }
 
-    const storagePath = process.env.STORAGE_PATH || '../storage';
-    const absoluteStoragePath = path.resolve(process.cwd(), storagePath);
+    const absoluteStoragePath = getStorageDir();
 
     while (true) {
       const jobs = printQueue.getPendingJobs();
@@ -35,6 +54,10 @@ export async function processPrintQueue() {
 
           const finalPath = path.join(absoluteStoragePath, 'sessions', job.session_id, 'final', 'photobooth-final.jpg');
 
+          if (!fs.existsSync(finalPath)) {
+            throw new Error(`File foto cetak belum ditemukan di: ${finalPath}`);
+          }
+
           await adapter.print(`Job-${job.id}`, finalPath, job.copies);
 
           printQueue.updateStatus(job.session_id, 'COMPLETED');
@@ -46,8 +69,11 @@ export async function processPrintQueue() {
         }
       }
       
+      const remainingJobs = printQueue.getPendingJobs();
+      if (remainingJobs.length === 0) break;
+
       // Prevent tight loop
-      await new Promise(res => setTimeout(res, 5000));
+      await new Promise(res => setTimeout(res, 2000));
     }
   } catch (error: any) {
      console.error('[PrintWorker] Error running queue:', error.message);

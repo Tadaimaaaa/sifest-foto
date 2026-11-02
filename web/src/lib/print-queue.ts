@@ -43,6 +43,10 @@ class PrintQueue {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Reset status PRINTING yang terputus agar tidak menggantung
+    try {
+      this.db.exec(`UPDATE prints SET status = 'FAILED' WHERE status = 'PRINTING'`);
+    } catch {}
   }
 
   public addJob(sessionId: string, copies: number = 1): PrintJob {
@@ -55,6 +59,13 @@ class PrintQueue {
       return this.getJobBySession(sessionId)!;
     } catch (err: any) {
       if (err.message.includes('UNIQUE constraint failed')) {
+        // Jika sesi yang sama dipencet lagi (misal user klik ulang 'CETAK FISIK'), reset ke PENDING
+        const updateStmt = this.db.prepare(`
+          UPDATE prints 
+          SET status = 'PENDING', copies = ?, error_message = NULL, updated_at = CURRENT_TIMESTAMP
+          WHERE session_id = ?
+        `);
+        updateStmt.run(copies, sessionId);
         return this.getJobBySession(sessionId)!;
       }
       throw err;
@@ -64,7 +75,7 @@ class PrintQueue {
   public getPendingJobs(): PrintJob[] {
     const stmt = this.db.prepare(`
       SELECT * FROM prints 
-      WHERE status = 'PENDING' OR status = 'FAILED'
+      WHERE status = 'PENDING'
       ORDER BY updated_at ASC
     `);
     return stmt.all() as PrintJob[];
