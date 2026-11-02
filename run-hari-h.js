@@ -216,7 +216,8 @@ async function main() {
           execSync('start http://localhost:3000/photobooth', { stdio: 'ignore', shell: true });
         } catch (e) {}
       }
-    };
+    }
+  };
 
     tunnelProcess.stdout.on('data', handleOutput);
     tunnelProcess.stderr.on('data', handleOutput);
