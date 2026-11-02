@@ -776,7 +776,7 @@ export default function PhotoboothKiosk() {
     try {
       const res = await fetch(`/api/config?t=${Date.now()}`);
       const data = await res.json();
-      if (data?.tunnelUrl) {
+      if (data?.tunnelUrl && !data.tunnelUrl.includes('api.trycloudflare.com')) {
         setTunnelUrl(data.tunnelUrl);
       }
     } catch (e) {}
@@ -1328,7 +1328,12 @@ export default function PhotoboothKiosk() {
   // Result State
   if (!isCompletedDismissed && session && session.status === 'completed') {
     const downloadToken = (session as any).downloadToken;
-    const activeBaseUrl = tunnelUrl || publicBaseUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+    const rawBaseUrl = (tunnelUrl && !tunnelUrl.includes('api.trycloudflare.com'))
+      ? tunnelUrl
+      : (publicBaseUrl && !publicBaseUrl.includes('api.trycloudflare.com'))
+      ? publicBaseUrl
+      : (typeof window !== 'undefined' ? window.location.origin : '');
+    const activeBaseUrl = rawBaseUrl;
     const qrUrl = (activeBaseUrl && downloadToken) ? `${activeBaseUrl}/photo/${downloadToken}` : null;
 
     return (

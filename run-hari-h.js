@@ -163,10 +163,13 @@ async function main() {
 
     const handleOutput = (data) => {
       const text = data.toString();
-      const match = text.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
-      if (match && !tunnelFound) {
-        tunnelFound = true;
-        const liveTunnelUrl = match[0];
+      const matches = text.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/g);
+      if (matches && !tunnelFound) {
+        // Filter out Cloudflare API endpoint: api.trycloudflare.com is NOT the user tunnel!
+        const validTunnel = matches.find((url) => !url.includes('api.trycloudflare.com'));
+        if (validTunnel) {
+          tunnelFound = true;
+          const liveTunnelUrl = validTunnel;
         
         // Save to storage/tunnel-url.txt
         try {

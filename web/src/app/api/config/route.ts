@@ -25,6 +25,9 @@ function getStorageDir() {
 
 export async function GET() {
   let tunnelUrl = process.env.NEXT_PUBLIC_PHOTO_BASE_URL || '';
+  if (tunnelUrl.includes('api.trycloudflare.com')) {
+    tunnelUrl = '';
+  }
 
   // Check if tunnel-url.txt exists in storage directory
   try {
@@ -32,7 +35,7 @@ export async function GET() {
     const filePath = path.join(storageDir, 'tunnel-url.txt');
     if (fs.existsSync(filePath)) {
       const saved = fs.readFileSync(filePath, 'utf-8').trim();
-      if (saved && saved.startsWith('http')) {
+      if (saved && saved.startsWith('http') && !saved.includes('api.trycloudflare.com')) {
         tunnelUrl = saved;
       }
     }
