@@ -43,6 +43,10 @@ class UploadQueue {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Bersihkan status UPLOADING atau FAILED yang nyangkut dari sesi sebelumnya agar tidak banjir terminal
+    try {
+      this.db.exec(`UPDATE uploads SET status = 'FAILED' WHERE status = 'UPLOADING'`);
+    } catch {}
   }
 
   public addJob(sessionId: string): string {
@@ -68,7 +72,7 @@ class UploadQueue {
   public getPendingJobs(): UploadJob[] {
     const stmt = this.db.prepare(`
       SELECT * FROM uploads 
-      WHERE status = 'PENDING' OR status = 'FAILED'
+      WHERE status = 'PENDING'
       ORDER BY updated_at ASC
     `);
     return stmt.all() as UploadJob[];

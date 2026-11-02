@@ -64,13 +64,16 @@ export async function processUploadQueue() {
           console.log(`[UploadWorker] Successfully uploaded session ${job.session_id}`);
           
         } catch (error: any) {
-          console.error(`[UploadWorker] Failed to upload session ${job.session_id}:`, error.message);
+          console.warn(`[UploadWorker] Cloud upload skipped for ${job.session_id} (${error.message}). Foto tetap aman & langsung diunduh dari lokal.`);
           uploadQueue.updateStatus(job.session_id, 'FAILED');
         }
       }
       
-      // Prevent tight loop in case of multiple consecutive failures
-      await new Promise(res => setTimeout(res, 5000));
+      // Jika tidak ada job pending lagi, langsung akhiri worker (tidak looping tanpa henti)
+      const remainingJobs = uploadQueue.getPendingJobs();
+      if (remainingJobs.length === 0) break;
+      
+      await new Promise(res => setTimeout(res, 3000));
     }
   } finally {
     isProcessingQueue = false;

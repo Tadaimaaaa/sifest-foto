@@ -3,13 +3,17 @@ import http from 'http';
 
 function wakeUpLiveView(): void {
   try {
-    const req1 = http.get('http://127.0.0.1:5513/?CMD=LiveViewWnd_Show', () => {});
+    const req1 = http.get('http://127.0.0.1:5513/?CMD=LiveViewWnd_Show', (res) => res.resume());
     req1.on('error', () => {});
-    req1.setTimeout(500, () => req1.destroy());
+    req1.setTimeout(1500, () => req1.destroy());
 
-    const req2 = http.get('http://127.0.0.1:5513/?CMD=LiveView_Start', () => {});
-    req2.on('error', () => {});
-    req2.setTimeout(500, () => req2.destroy());
+    setTimeout(() => {
+      try {
+        const req2 = http.get('http://127.0.0.1:5513/?CMD=LiveView_Start', (res) => res.resume());
+        req2.on('error', () => {});
+        req2.setTimeout(1500, () => req2.destroy());
+      } catch {}
+    }, 150);
   } catch {}
 }
 

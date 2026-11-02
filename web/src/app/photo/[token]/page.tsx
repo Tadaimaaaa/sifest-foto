@@ -47,7 +47,7 @@ export default async function PhotoDownloadPage({ params }: { params: { token: s
   const localPreviewPath = path.join(absoluteStoragePath, 'sessions', job.session_id, 'final', 'photobooth-preview.jpg');
 
   if (fs.existsSync(localFinalPath)) {
-    downloadUrl = `/api/image/${job.session_id}/final`;
+    downloadUrl = `/api/image/${job.session_id}/final?download=1`;
     previewUrl = fs.existsSync(localPreviewPath)
       ? `/api/image/${job.session_id}/preview`
       : `/api/image/${job.session_id}/final`;

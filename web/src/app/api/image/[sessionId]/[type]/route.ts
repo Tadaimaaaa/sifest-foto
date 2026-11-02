@@ -69,7 +69,7 @@ export async function GET(
 
     const fileBuffer = await fs.readFile(filePath);
     
-    const isDownload = req.nextUrl.searchParams.get('download') === '1' || type === 'final';
+    const isDownload = req.nextUrl.searchParams.get('download') === '1';
     const headers: Record<string, string> = {
       'Content-Type': 'image/jpeg',
       'Cache-Control': 'public, max-age=31536000, immutable',

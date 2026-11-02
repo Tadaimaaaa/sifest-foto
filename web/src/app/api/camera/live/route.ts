@@ -24,13 +24,17 @@ function getLiveFrame(): Promise<Buffer | null> {
 
 function wakeUpLiveView(): void {
   try {
-    const req1 = http.get('http://127.0.0.1:5513/?CMD=LiveViewWnd_Show', () => {});
+    const req1 = http.get('http://127.0.0.1:5513/?CMD=LiveViewWnd_Show', (res) => res.resume());
     req1.on('error', () => {});
-    req1.setTimeout(500, () => req1.destroy());
+    req1.setTimeout(1500, () => req1.destroy());
 
-    const req2 = http.get('http://127.0.0.1:5513/?CMD=LiveView_Start', () => {});
-    req2.on('error', () => {});
-    req2.setTimeout(500, () => req2.destroy());
+    setTimeout(() => {
+      try {
+        const req2 = http.get('http://127.0.0.1:5513/?CMD=LiveView_Start', (res) => res.resume());
+        req2.on('error', () => {});
+        req2.setTimeout(1500, () => req2.destroy());
+      } catch {}
+    }, 150);
   } catch {}
 }
 
@@ -112,16 +116,16 @@ export async function GET(req: NextRequest) {
                 Buffer.from('\r\n')
               ])
             );
-            // ~25-30 FPS interval
-            await new Promise((r) => setTimeout(r, 35));
+            // ~20 FPS interval — seimbang: tampilan sangat mulus & tidak membebani server port 5513
+            await new Promise((r) => setTimeout(r, 50));
           } else {
             consecutiveMisses++;
-            // If frames are missing for more than ~1.5 seconds, close stream so client falls back
-            if (consecutiveMisses > 25) {
+            // Tunggu hingga ~3.5 detik (memberi waktu jeda rana kamera DSLR mengambil foto tanpa memutus stream)
+            if (consecutiveMisses > 60) {
               console.warn('[CameraLive] digiCamControl disconnected, terminating stream.');
               break;
             }
-            if (consecutiveMisses % 8 === 0) {
+            if (consecutiveMisses % 12 === 0) {
               wakeUpLiveView();
             }
             await new Promise((r) => setTimeout(r, 60));
