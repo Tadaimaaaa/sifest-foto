@@ -120,15 +120,16 @@ export async function GET(req: NextRequest) {
             await new Promise((r) => setTimeout(r, 50));
           } else {
             consecutiveMisses++;
-            // Tunggu hingga ~3.5 detik (memberi waktu jeda rana kamera DSLR mengambil foto tanpa memutus stream)
-            if (consecutiveMisses > 60) {
-              console.warn('[CameraLive] digiCamControl disconnected, terminating stream.');
-              break;
-            }
+            // Kamera sedang membuka rana untuk mengambil foto; jangan memutus stream agar tampilan browser tidak freeze!
             if (consecutiveMisses % 12 === 0) {
               wakeUpLiveView();
             }
-            await new Promise((r) => setTimeout(r, 60));
+            // Jika digiCamControl terputus lebih dari 30 detik, barulah akhiri stream
+            if (consecutiveMisses > 300) {
+              console.warn('[CameraLive] digiCamControl tidak merespons >30 detik, terminating stream.');
+              break;
+            }
+            await new Promise((r) => setTimeout(r, 80));
           }
         } catch {
           await new Promise((r) => setTimeout(r, 100));

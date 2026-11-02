@@ -71,11 +71,18 @@ export class CameraManager {
           try {
             const result = await this.adapter.capture(sessionId, photoIndex);
             if (result.success) return result;
+            console.warn(`[CameraManager] Real capture attempt 1 failed (${result.error}), retrying...`);
+            const retryResult = await this.adapter.capture(sessionId, photoIndex);
+            if (retryResult.success) return retryResult;
           } catch (realErr: any) {
-            console.warn(`[CameraManager] Real capture failed (${realErr?.message}), using mock fallback...`);
+            console.warn(`[CameraManager] Real capture exception (${realErr?.message}), retrying...`);
+            try {
+              const retryResult = await this.adapter.capture(sessionId, photoIndex);
+              if (retryResult.success) return retryResult;
+            } catch {}
           }
         }
-        console.log(`[CameraManager] DSLR offline. Capturing photo ${photoIndex} via mock fallback...`);
+        console.log(`[CameraManager] DSLR offline or capture unavailable. Capturing photo ${photoIndex} via mock fallback...`);
         return await this.mockAdapter.capture(sessionId, photoIndex);
       } else {
         return await this.adapter.capture(sessionId, photoIndex);
