@@ -26,24 +26,26 @@ function httpGet(url: string, timeoutMs: number = 3000): Promise<Buffer | null> 
 
 function triggerCapture(): void {
   try {
-    // 1. Kirim trigger utama Capture
-    const req1 = http.get('http://127.0.0.1:5513/?CMD=Capture', (res) => res.resume());
+    // 1. Kirim CaptureNoAf SEKETIKA — langsung membunyikan rana (cekrek) tanpa jeda motor fokus
+    const req1 = http.get('http://127.0.0.1:5513/?CMD=CaptureNoAf', (res) => res.resume());
     req1.on('error', () => {});
-    req1.setTimeout(4000, () => req1.destroy());
+    req1.setTimeout(3000, () => req1.destroy());
 
-    // 2. Kirim juga CaptureNoAf (mengabaikan fokus lensa jika di tempat gelap kamera gagal mengunci AF)
+    // 2. Cadangan Capture standar jika kamera membutuhkan sinyal shutter kedua
     setTimeout(() => {
       try {
-        const req2 = http.get('http://127.0.0.1:5513/?CMD=CaptureNoAf', (res) => res.resume());
+        const req2 = http.get('http://127.0.0.1:5513/?CMD=Capture', (res) => res.resume());
         req2.on('error', () => {});
-        req2.setTimeout(4000, () => req2.destroy());
+        req2.setTimeout(3000, () => req2.destroy());
       } catch {}
-    }, 200);
+    }, 100);
   } catch {}
 }
 
 export class RealCameraAdapter implements CameraAdapter {
   private status: CameraStatus = 'disconnected';
+  private lastPhotoLen: number = 0;
+  private lastPhotoHead: Buffer | null = null;
 
   async connect(): Promise<void> {
     this.status = 'connecting';
@@ -52,13 +54,15 @@ export class RealCameraAdapter implements CameraAdapter {
       this.status = 'ready';
       console.log('[RealCameraAdapter] Connected to digiCamControl Web Server at port 5513');
     } else {
-      this.status = 'ready'; // ready for capture attempt or fallback
+      this.status = 'ready';
       console.log('[RealCameraAdapter] digiCamControl port 5513 not yet open, standing by');
     }
   }
 
   async disconnect(): Promise<void> {
     this.status = 'disconnected';
+    this.lastPhotoLen = 0;
+    this.lastPhotoHead = null;
     console.log('[RealCameraAdapter] Disconnected');
   }
 
@@ -110,50 +114,52 @@ export class RealCameraAdapter implements CameraAdapter {
       const fileName = `photo-${photoIndex}.jpg`;
       const filePath = path.join(sessionDir, fileName);
 
-      console.log(`[RealCameraAdapter] Triggering capture for ${fileName}...`);
+      console.log(`[RealCameraAdapter] Triggering capture for ${fileName} INSTANTLY...`);
 
-      // 1. Ambil baseline gambar preview.jpg saat ini SEBELUM shutter ditekan
-      const baseline = await httpGet('http://127.0.0.1:5513/preview.jpg', 2500);
-      const baselineLen = baseline ? baseline.length : 0;
-      const baselineHead = baseline && baseline.length >= 64 ? baseline.subarray(0, 64) : null;
-
-      // 2. Trigger shutter kamera via digiCamControl HTTP API
+      // 1. TRIGGER CEKREK SEKETIKA pada milidetik 0!
+      // TIDAK ada download baseline yang memperlambat rana kamera!
       triggerCapture();
 
-      // Jeda awal memberi waktu kamera untuk membuka rana dan sensor merekam gambar
-      await new Promise((r) => setTimeout(r, 600));
+      // 2. Beri jeda 1 detik agar kamera membuka rana dan mentransfer file via USB tanpa dibebani polling
+      await new Promise((r) => setTimeout(r, 1000));
 
-      // 3. Polling sampai gambar baru benar-benar selesai ditransfer oleh kamera ke PC
+      // 3. Polling sampai foto baru selesai ditransfer oleh digiCamControl
       let imageBuffer: Buffer | null = null;
       const pollStart = Date.now();
 
-      while (Date.now() - pollStart < 10000) {
-        const current = await httpGet('http://127.0.0.1:5513/preview.jpg', 3000);
+      while (Date.now() - pollStart < 8000) {
+        const current = await httpGet('http://127.0.0.1:5513/preview.jpg', 2500);
         if (
           current &&
           current.length > 10000 &&
           current[0] === 0xFF &&
           current[1] === 0xD8
         ) {
-          // Pastikan gambar ini adalah foto BARU (bukan baseline lama)
-          if (baselineHead && baselineLen > 0) {
-            if (current.length !== baselineLen || !current.subarray(0, 64).equals(baselineHead)) {
+          // Bandingkan dengan metadata foto sebelumnya yang disimpan di memory (tanpa beban jaringan)
+          if (this.lastPhotoLen > 0 && this.lastPhotoHead) {
+            if (current.length !== this.lastPhotoLen || !current.subarray(0, 64).equals(this.lastPhotoHead)) {
               imageBuffer = current;
+              this.lastPhotoLen = current.length;
+              this.lastPhotoHead = current.subarray(0, 64);
               break;
             }
           } else {
             imageBuffer = current;
+            this.lastPhotoLen = current.length;
+            this.lastPhotoHead = current.subarray(0, 64);
             break;
           }
         }
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 350));
       }
 
-      // Safety fallback jika preview.jpg tidak berubah namun data valid
+      // Safety fallback jika preview.jpg valid
       if (!imageBuffer) {
-        const lastCheck = await httpGet('http://127.0.0.1:5513/preview.jpg', 3000);
+        const lastCheck = await httpGet('http://127.0.0.1:5513/preview.jpg', 2500);
         if (lastCheck && lastCheck.length > 10000 && lastCheck[0] === 0xFF && lastCheck[1] === 0xD8) {
           imageBuffer = lastCheck;
+          this.lastPhotoLen = imageBuffer.length;
+          this.lastPhotoHead = imageBuffer.subarray(0, 64);
         }
       }
 

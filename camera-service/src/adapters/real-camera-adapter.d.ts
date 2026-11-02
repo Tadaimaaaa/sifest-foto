@@ -2,6 +2,8 @@ import { CameraAdapter } from './camera-adapter';
 import { CameraStatus, CaptureResult } from '../types/camera-types';
 export declare class RealCameraAdapter implements CameraAdapter {
     private status;
+    private lastPhotoLen;
+    private lastPhotoHead;
     connect(): Promise<void>;
     disconnect(): Promise<void>;
     private checkHttpServer;
