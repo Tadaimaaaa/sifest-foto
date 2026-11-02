@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import * as http from 'node:http';
 import { CameraAdapter } from './camera-adapter';
@@ -24,28 +25,53 @@ function httpGet(url: string, timeoutMs: number = 3000): Promise<Buffer | null> 
   });
 }
 
+function httpGetText(url: string, timeoutMs: number = 1500): Promise<string> {
+  return new Promise((resolve) => {
+    const req = http.get(url, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8').trim()));
+    });
+    req.on('error', () => resolve(''));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      resolve('');
+    });
+  });
+}
+
+function httpGetContentLength(url: string, timeoutMs: number = 1500): Promise<number> {
+  return new Promise((resolve) => {
+    const req = http.request(url, { method: 'HEAD', timeout: timeoutMs }, (res) => {
+      res.resume();
+      const len = parseInt(res.headers['content-length'] || '0', 10);
+      resolve(len);
+    });
+    req.on('error', () => resolve(0));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(0);
+    });
+    req.end();
+  });
+}
+
 function triggerCapture(): void {
   try {
-    // 1. SLC capturenoaf (Single Command System: Cekrek seketika tanpa jeda motor autofocus)
-    const req1 = http.get('http://127.0.0.1:5513/?slc=capturenoaf', (res) => res.resume());
-    req1.on('error', () => {});
-    req1.setTimeout(3000, () => req1.destroy());
-
-    // 2. Kirim juga ?CMD=Capture sebagai cadangan setelah jeda 250ms jika SLC tidak didukung
-    setTimeout(() => {
-      try {
-        const req2 = http.get('http://127.0.0.1:5513/?CMD=Capture', (res) => res.resume());
-        req2.on('error', () => {});
-        req2.setTimeout(3000, () => req2.destroy());
-      } catch {}
-    }, 250);
+    // Single Command System: Kirim TEPAT SATU kali perintah capturenoaf (cekrek instan)
+    // JANGAN kirim perintah kedua agar kamera tidak jepret berulang kali (double/triple shot)
+    const req = http.get('http://127.0.0.1:5513/?slc=capturenoaf', (res) => res.resume());
+    req.on('error', () => {
+      // Fallback hanya jika slc error
+      http.get('http://127.0.0.1:5513/?CMD=Capture', (r) => r.resume()).on('error', () => {});
+    });
+    req.setTimeout(2500, () => req.destroy());
   } catch {}
 }
 
 export class RealCameraAdapter implements CameraAdapter {
   private status: CameraStatus = 'disconnected';
-  private lastPhotoLen: number = 0;
-  private lastPhotoHead: Buffer | null = null;
+  private lastCapturedFilename: string = '';
 
   async connect(): Promise<void> {
     this.status = 'connecting';
@@ -53,7 +79,6 @@ export class RealCameraAdapter implements CameraAdapter {
     if (isAlive) {
       this.status = 'ready';
       console.log('[RealCameraAdapter] Connected to digiCamControl Web Server at port 5513');
-      // Catat baseline awal foto yang sedang ada di digiCamControl saat connect
       this.prepareCapture().catch(() => {});
     } else {
       this.status = 'ready';
@@ -63,23 +88,18 @@ export class RealCameraAdapter implements CameraAdapter {
 
   async disconnect(): Promise<void> {
     this.status = 'disconnected';
-    this.lastPhotoLen = 0;
-    this.lastPhotoHead = null;
+    this.lastCapturedFilename = '';
     console.log('[RealCameraAdapter] Disconnected');
   }
 
   // Dipanggil otomatis di background saat countdown 5 detik berjalan
-  // Mengunci ukuran foto lama ke memori SEBELUM shutter ditekan
   async prepareCapture(): Promise<void> {
     try {
-      const current = await httpGet('http://127.0.0.1:5513/preview.jpg', 2000);
-      if (current && current.length > 10000 && current[0] === 0xFF && current[1] === 0xD8) {
-        this.lastPhotoLen = current.length;
-        this.lastPhotoHead = current.subarray(0, 64);
-        console.log(`[RealCameraAdapter] Baseline photo locked during countdown: ${this.lastPhotoLen} bytes`);
+      const filename = await httpGetText('http://127.0.0.1:5513/?slc=get&param1=lastcaptured&param2=', 1200);
+      if (filename && filename !== '-') {
+        this.lastCapturedFilename = filename;
+        console.log(`[RealCameraAdapter] Baseline lastcaptured locked: "${filename}"`);
       }
-      // PENTING: JANGAN kirim LiveView_Focus di sini!
-      // Autofokus kamera di tempat redup/malam hari membuat motor lensa berputar mencari fokus dan mengunci rana kamera.
     } catch {}
   }
 
@@ -133,72 +153,80 @@ export class RealCameraAdapter implements CameraAdapter {
 
       console.log(`[RealCameraAdapter] Triggering capture for ${fileName} INSTANTLY...`);
 
-      // Kunci nilai baseline sebelum tombol jepret ditekan
-      const initialBaselineLen = this.lastPhotoLen;
-      const initialBaselineHead = this.lastPhotoHead;
+      // 1. Cek file terakhir sebelum shutter ditekan (cepat <15ms)
+      let prevFilename = this.lastCapturedFilename;
+      if (!prevFilename) {
+        prevFilename = await httpGetText('http://127.0.0.1:5513/?slc=get&param1=lastcaptured&param2=', 1000);
+      }
+      const prevLen = await httpGetContentLength('http://127.0.0.1:5513/preview.jpg', 1000);
+      console.log(`[RealCameraAdapter] Pre-capture: prevFilename="${prevFilename}", prevLen=${prevLen}`);
 
-      // 1. TRIGGER CEKREK SEKETIKA pada milidetik 0!
+      // 2. TRIGGER RANA SEKETIKA pada milidetik 0!
       triggerCapture();
 
-      // 2. Beri waktu kamera Canon 700D membuka rana dan mentransfer file via USB
-      await new Promise((r) => setTimeout(r, 1200));
+      // 3. Beri waktu kamera Canon 700D membuka rana dan mentransfer file via USB
+      await new Promise((r) => setTimeout(r, 600));
 
-      // 3. Polling sampai foto BARU benar-benar selesai ditransfer oleh digiCamControl
+      // 4. Polling sampai foto BARU selesai ditransfer oleh digiCamControl
       let imageBuffer: Buffer | null = null;
+      let newCapturedPath: string | null = null;
       const pollStart = Date.now();
-      let retryTriggerSent = false;
 
-      while (Date.now() - pollStart < 12000) {
-        const current = await httpGet('http://127.0.0.1:5513/preview.jpg', 2000);
-        if (
-          current &&
-          current.length > 10000 &&
-          current[0] === 0xFF &&
-          current[1] === 0xD8
-        ) {
-          // Bandingkan dengan baseline foto sebelum shutter ditekan
-          if (initialBaselineLen > 0 && initialBaselineHead) {
-            // Foto BARU pasti memiliki ukuran atau byte header yang berbeda dari foto lama
-            if (current.length !== initialBaselineLen || !current.subarray(0, 64).equals(initialBaselineHead)) {
-              imageBuffer = current;
-              this.lastPhotoLen = current.length;
-              this.lastPhotoHead = current.subarray(0, 64);
-              console.log(`[RealCameraAdapter] New photo confirmed: ${current.length} bytes (was ${initialBaselineLen})`);
-              break;
-            }
-          } else {
-            // Jika baseline awal kosong, tunggu transfer foto yang baru jepret selesai minimal 2 detik
-            if (Date.now() - pollStart > 2000) {
-              imageBuffer = current;
-              this.lastPhotoLen = current.length;
-              this.lastPhotoHead = current.subarray(0, 64);
-              console.log(`[RealCameraAdapter] First photo confirmed without prior baseline: ${current.length} bytes`);
-              break;
-            }
+      while (Date.now() - pollStart < 10000) {
+        // Cek A: Apakah nama file lastcaptured berubah? (Standar resmi digiCamControl)
+        const currentFilename = await httpGetText('http://127.0.0.1:5513/?slc=get&param1=lastcaptured&param2=', 1000);
+        if (currentFilename && currentFilename !== '-' && currentFilename !== prevFilename) {
+          newCapturedPath = currentFilename;
+          this.lastCapturedFilename = currentFilename;
+          console.log(`[RealCameraAdapter] New photo detected via lastcaptured: "${newCapturedPath}" in ${Date.now() - pollStart}ms`);
+          break;
+        }
+
+        // Cek B: Apakah Content-Length preview.jpg berubah?
+        const currentLen = await httpGetContentLength('http://127.0.0.1:5513/preview.jpg', 1000);
+        if (currentLen > 5000 && currentLen !== prevLen) {
+          console.log(`[RealCameraAdapter] New photo detected via preview.jpg length change: ${prevLen} -> ${currentLen}`);
+          break;
+        }
+
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      // 5. Ambil data foto baru:
+      // Prioritas 1: Jika path file ada di disk lokal, baca langsung dari disk (cepat & bebas lag!)
+      if (newCapturedPath && existsSync(newCapturedPath)) {
+        try {
+          const directBuf = await fs.readFile(newCapturedPath);
+          if (directBuf && directBuf.length > 10000 && directBuf[0] === 0xFF && directBuf[1] === 0xD8) {
+            imageBuffer = directBuf;
+            console.log(`[RealCameraAdapter] Loaded directly from disk: ${newCapturedPath} (${imageBuffer.length} bytes)`);
           }
+        } catch (e: any) {
+          console.warn('[RealCameraAdapter] Direct disk read warning:', e.message);
         }
-
-        // Jika setelah 4 detik kamera belum merespons, picu trigger capture ulang 1 kali
-        if (Date.now() - pollStart > 4000 && !retryTriggerSent) {
-          retryTriggerSent = true;
-          console.warn(`[RealCameraAdapter] Foto ${fileName} belum terdeteksi setelah 4s, mengirim sinyal rana ulang...`);
-          triggerCapture();
-        }
-
-        await new Promise((r) => setTimeout(r, 250));
       }
 
-      // ATURAN MUTLAK: JANGAN PERNAH mengambil foto lama jika kamera gagal jepret!
-      // Mengambil foto lama menyebabkan foto pose 1 terduplikasi ke pose 2.
+      // Prioritas 2: Download /image/<filename> dari web server digiCamControl
+      if (!imageBuffer && newCapturedPath) {
+        const baseName = path.basename(newCapturedPath);
+        imageBuffer = await httpGet(`http://127.0.0.1:5513/image/${encodeURIComponent(baseName)}`, 3000);
+      }
+
+      // Prioritas 3: Download /preview.jpg dari web server digiCamControl
+      if (!imageBuffer) {
+        imageBuffer = await httpGet('http://127.0.0.1:5513/preview.jpg', 3000);
+      }
+
+      // Pastikan gambar valid
       if (!imageBuffer || imageBuffer.length < 5000) {
-        throw new Error('CAMERA_SHUTTER_FAILED: Kamera DSLR tidak merespons jepretan foto baru.');
+        throw new Error('CAMERA_SHUTTER_FAILED: Foto baru tidak terdeteksi dari kamera.');
       }
 
-      // 4. Simpan foto asli baru ke storage sesi
+      // 6. Simpan foto asli baru ke storage sesi
       await fs.writeFile(filePath, imageBuffer);
       console.log(`[RealCameraAdapter] Saved ${filePath} (${imageBuffer.length} bytes) in ${Date.now() - startTime}ms`);
 
-      // 5. Beri jeda 300ms agar buffer kamera bersih, lalu buka kembali cermin LiveView
+      // 7. Buka kembali cermin LiveView untuk pose berikutnya
       setTimeout(() => {
         this.ensureLiveView();
       }, 300);
