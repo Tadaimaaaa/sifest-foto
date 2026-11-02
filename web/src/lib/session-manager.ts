@@ -257,7 +257,12 @@ export class SessionManager {
         this.broadcast('countdown:capture', { photoIndex: i });
         console.log(`[Session] Photo ${i} captured trigger`);
 
-        const result = await cameraClient.capture(session.id, i);
+        let result = await cameraClient.capture(session.id, i);
+        if (!result.success) {
+          console.warn(`[Session] Photo ${i} capture failed, attempting immediate 1x retry...`);
+          await this.sleep(800, signal);
+          result = await cameraClient.capture(session.id, i);
+        }
         if (!result.success) {
           throw new Error((result as any).error || 'CAPTURE_FAILED');
         }
@@ -337,7 +342,12 @@ export class SessionManager {
           this.broadcast('countdown:capture', { photoIndex: k, isRetake: true });
           console.log(`[Session] Retake: Photo ${k} captured trigger`);
 
-          const captureResult = await cameraClient.capture(session.id, k);
+          let captureResult = await cameraClient.capture(session.id, k);
+          if (!captureResult.success) {
+            console.warn(`[Session] Retake photo ${k} capture failed, attempting immediate 1x retry...`);
+            await this.sleep(800, signal);
+            captureResult = await cameraClient.capture(session.id, k);
+          }
           if (!captureResult.success) {
             throw new Error((captureResult as any).error || 'CAPTURE_FAILED');
           }

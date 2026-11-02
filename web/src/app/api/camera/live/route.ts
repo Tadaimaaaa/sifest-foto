@@ -120,16 +120,12 @@ export async function GET(req: NextRequest) {
             await new Promise((r) => setTimeout(r, 50));
           } else {
             consecutiveMisses++;
-            // Kamera sedang membuka rana untuk mengambil foto; jangan memutus stream agar tampilan browser tidak freeze!
-            if (consecutiveMisses % 12 === 0) {
-              wakeUpLiveView();
-            }
-            // Jika digiCamControl terputus lebih dari 30 detik, barulah akhiri stream
+            // Kamera sedang membuka rana untuk mengambil foto; biarkan kamera menyelesaikan transfer USB tanpa gangguan
             if (consecutiveMisses > 300) {
               console.warn('[CameraLive] digiCamControl tidak merespons >30 detik, terminating stream.');
               break;
             }
-            await new Promise((r) => setTimeout(r, 80));
+            await new Promise((r) => setTimeout(r, 100));
           }
         } catch {
           await new Promise((r) => setTimeout(r, 100));

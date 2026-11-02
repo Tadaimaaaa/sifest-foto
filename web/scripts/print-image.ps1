@@ -71,3 +71,4 @@ $image.Dispose()
 $doc.Dispose()
 
 Write-Output "SUCCESS: Printed to $($doc.PrinterSettings.PrinterName)"
+

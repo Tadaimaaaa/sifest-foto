@@ -58,11 +58,11 @@ function httpGet(url, timeoutMs = 3000) {
 }
 function triggerCapture() {
     try {
-        // 1. Kirim CaptureNoAf SEKETIKA — langsung membunyikan rana (cekrek) tanpa jeda motor fokus
-        const req1 = http.get('http://127.0.0.1:5513/?CMD=CaptureNoAf', (res) => res.resume());
+        // 1. SLC capturenoaf (Single Command System: Cekrek seketika tanpa jeda motor autofocus)
+        const req1 = http.get('http://127.0.0.1:5513/?slc=capturenoaf', (res) => res.resume());
         req1.on('error', () => { });
         req1.setTimeout(3000, () => req1.destroy());
-        // 2. Cadangan Capture standar jika kamera membutuhkan sinyal shutter kedua
+        // 2. Kirim juga ?CMD=Capture sebagai cadangan setelah jeda 250ms jika SLC tidak didukung
         setTimeout(() => {
             try {
                 const req2 = http.get('http://127.0.0.1:5513/?CMD=Capture', (res) => res.resume());
@@ -70,7 +70,7 @@ function triggerCapture() {
                 req2.setTimeout(3000, () => req2.destroy());
             }
             catch { }
-        }, 100);
+        }, 250);
     }
     catch { }
 }
@@ -99,7 +99,7 @@ class RealCameraAdapter {
         console.log('[RealCameraAdapter] Disconnected');
     }
     // Dipanggil otomatis di background saat countdown 5 detik berjalan
-    // Ini mengunci ukuran foto lama ke memori SEBELUM shutter ditekan, tanpa jeda sama sekali
+    // Mengunci ukuran foto lama ke memori SEBELUM shutter ditekan
     async prepareCapture() {
         try {
             const current = await httpGet('http://127.0.0.1:5513/preview.jpg', 2000);
@@ -108,8 +108,8 @@ class RealCameraAdapter {
                 this.lastPhotoHead = current.subarray(0, 64);
                 console.log(`[RealCameraAdapter] Baseline photo locked during countdown: ${this.lastPhotoLen} bytes`);
             }
-            // Kirim sinyal LiveView_Focus agar kamera mengunci fokus ke orang saat berpose
-            http.get('http://127.0.0.1:5513/?CMD=LiveView_Focus', (res) => res.resume()).on('error', () => { });
+            // PENTING: JANGAN kirim LiveView_Focus di sini!
+            // Autofokus kamera di tempat redup/malam hari membuat motor lensa berputar mencari fokus dan mengunci rana kamera.
         }
         catch { }
     }
@@ -163,13 +163,13 @@ class RealCameraAdapter {
             // 1. TRIGGER CEKREK SEKETIKA pada milidetik 0!
             triggerCapture();
             // 2. Beri waktu kamera Canon 700D membuka rana dan mentransfer file via USB
-            // (Kamera DSLR butuh ~1.5 detik untuk menyelesaikan transfer USB ke laptop)
-            await new Promise((r) => setTimeout(r, 1400));
+            await new Promise((r) => setTimeout(r, 1200));
             // 3. Polling sampai foto BARU benar-benar selesai ditransfer oleh digiCamControl
             let imageBuffer = null;
             const pollStart = Date.now();
-            while (Date.now() - pollStart < 9000) {
-                const current = await httpGet('http://127.0.0.1:5513/preview.jpg', 2500);
+            let retryTriggerSent = false;
+            while (Date.now() - pollStart < 12000) {
+                const current = await httpGet('http://127.0.0.1:5513/preview.jpg', 2000);
                 if (current &&
                     current.length > 10000 &&
                     current[0] === 0xFF &&
@@ -186,8 +186,8 @@ class RealCameraAdapter {
                         }
                     }
                     else {
-                        // Jika baseline awal kosong, tunggu minimal 2.5 detik agar transfer foto yang baru jepret selesai
-                        if (Date.now() - pollStart > 2500) {
+                        // Jika baseline awal kosong, tunggu transfer foto yang baru jepret selesai minimal 2 detik
+                        if (Date.now() - pollStart > 2000) {
                             imageBuffer = current;
                             this.lastPhotoLen = current.length;
                             this.lastPhotoHead = current.subarray(0, 64);
@@ -196,25 +196,26 @@ class RealCameraAdapter {
                         }
                     }
                 }
-                await new Promise((r) => setTimeout(r, 300));
-            }
-            // Safety fallback
-            if (!imageBuffer) {
-                const lastCheck = await httpGet('http://127.0.0.1:5513/preview.jpg', 2500);
-                if (lastCheck && lastCheck.length > 10000 && lastCheck[0] === 0xFF && lastCheck[1] === 0xD8) {
-                    imageBuffer = lastCheck;
-                    this.lastPhotoLen = imageBuffer.length;
-                    this.lastPhotoHead = imageBuffer.subarray(0, 64);
+                // Jika setelah 4 detik kamera belum merespons, picu trigger capture ulang 1 kali
+                if (Date.now() - pollStart > 4000 && !retryTriggerSent) {
+                    retryTriggerSent = true;
+                    console.warn(`[RealCameraAdapter] Foto ${fileName} belum terdeteksi setelah 4s, mengirim sinyal rana ulang...`);
+                    triggerCapture();
                 }
+                await new Promise((r) => setTimeout(r, 250));
             }
+            // ATURAN MUTLAK: JANGAN PERNAH mengambil foto lama jika kamera gagal jepret!
+            // Mengambil foto lama menyebabkan foto pose 1 terduplikasi ke pose 2.
             if (!imageBuffer || imageBuffer.length < 5000) {
-                throw new Error('FAILED_TO_DOWNLOAD_PHOTO_FROM_DIGICAMCONTROL');
+                throw new Error('CAMERA_SHUTTER_FAILED: Kamera DSLR tidak merespons jepretan foto baru.');
             }
             // 4. Simpan foto asli baru ke storage sesi
             await fs.writeFile(filePath, imageBuffer);
             console.log(`[RealCameraAdapter] Saved ${filePath} (${imageBuffer.length} bytes) in ${Date.now() - startTime}ms`);
-            // 5. Buka kembali cermin LiveView untuk pose berikutnya
-            this.ensureLiveView();
+            // 5. Beri jeda 300ms agar buffer kamera bersih, lalu buka kembali cermin LiveView
+            setTimeout(() => {
+                this.ensureLiveView();
+            }, 300);
             this.status = 'ready';
             return {
                 success: true,
@@ -227,7 +228,9 @@ class RealCameraAdapter {
         catch (err) {
             console.error(`[RealCameraAdapter] Capture error: ${err.message}`);
             this.status = 'ready';
-            this.ensureLiveView();
+            setTimeout(() => {
+                this.ensureLiveView();
+            }, 300);
             return this.createErrorResult(sessionId, photoIndex, err.message || 'CAPTURE_FAILED');
         }
     }
