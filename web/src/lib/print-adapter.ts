@@ -7,13 +7,13 @@ import fsSync from 'fs';
 const execAsync = promisify(exec);
 
 export interface PrintAdapter {
-  print(jobId: string, filePath: string, copies: number): Promise<void>;
+  print(jobId: string, filePath: string, copies: number, slots?: string): Promise<void>;
   isPrinterReady(): Promise<boolean>;
 }
 
 export class MockPrintAdapter implements PrintAdapter {
-  async print(jobId: string, filePath: string, copies: number): Promise<void> {
-    console.log(`[MockPrintAdapter] Simulating print for ${jobId} (Copies: ${copies})`);
+  async print(jobId: string, filePath: string, copies: number, slots?: string): Promise<void> {
+    console.log(`[MockPrintAdapter] Simulating print for ${jobId} (Copies: ${copies}, Slots: ${slots || '1'})`);
     console.log(`[MockPrintAdapter] Target file: ${filePath}`);
     await new Promise(resolve => setTimeout(resolve, 2000));
     console.log(`[MockPrintAdapter] Print successful for ${jobId}`);
@@ -60,7 +60,7 @@ export class WindowsPrintAdapter implements PrintAdapter {
     }
   }
 
-  async print(jobId: string, filePath: string, copies: number): Promise<void> {
+  async print(jobId: string, filePath: string, copies: number, slots: string = '1'): Promise<void> {
     const absoluteFile = path.resolve(filePath);
     try {
       await fs.access(absoluteFile);
@@ -69,7 +69,7 @@ export class WindowsPrintAdapter implements PrintAdapter {
     }
 
     const printer = await this.getTargetPrinter();
-    console.log(`[WindowsPrintAdapter] Mencetak ${absoluteFile} ke printer '${printer}' (${copies} lembar)...`);
+    console.log(`[WindowsPrintAdapter] Mencetak ${absoluteFile} ke printer '${printer}' (Slots: ${slots}, Copies: ${copies})...`);
 
     // Cari lokasi print-image.ps1
     const possibleScriptPaths = [
@@ -84,7 +84,7 @@ export class WindowsPrintAdapter implements PrintAdapter {
       throw new Error(`Script pencetak print-image.ps1 tidak ditemukan.`);
     }
 
-    const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -ImagePath "${absoluteFile}" -PrinterName "${printer}" -Copies ${copies}`;
+    const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -ImagePath "${absoluteFile}" -PrinterName "${printer}" -Copies ${copies} -Slots "${slots}"`;
     const { stdout, stderr } = await execAsync(cmd, { timeout: 45000 });
 
     if (stderr && stderr.includes('Error')) {

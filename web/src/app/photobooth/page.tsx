@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Banknote, ArrowLeft, Camera, Sparkles, CheckCircle2, Loader2, Palette, Check, X, Clock, Video, AlertTriangle, SwitchCamera, RefreshCw, Maximize, Minimize } from 'lucide-react';
+import { QrCode, Banknote, ArrowLeft, Camera, Sparkles, CheckCircle2, Loader2, Palette, Check, X, Clock, Video, AlertTriangle, SwitchCamera, RefreshCw, Maximize, Minimize, Printer } from 'lucide-react';
 
 const PHOTO_FILTERS = [
   {
@@ -380,6 +380,9 @@ export default function PhotoboothKiosk() {
 
   const [isStarting, setIsStarting] = useState(false);
   const [printStatus, setPrintStatus] = useState<'IDLE'|'PENDING'|'PRINTING'|'COMPLETED'|'FAILED'>('IDLE');
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+  const [selectedPrintSlots, setSelectedPrintSlots] = useState<number[]>([1]);
+  const [isFullCenterPrint, setIsFullCenterPrint] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -723,11 +726,22 @@ export default function PhotoboothKiosk() {
     setTimeout(() => setIsStarting(false), 3000);
   };
 
-  const handlePrint = async () => {
+  const handlePrintClick = () => {
     if (!session || (printStatus !== 'IDLE' && printStatus !== 'FAILED')) return;
+    setIsPrintModalOpen(true);
+  };
+
+  const startPrint = async (slotsArg?: string) => {
+    if (!session || (printStatus !== 'IDLE' && printStatus !== 'FAILED')) return;
+    setIsPrintModalOpen(false);
     setPrintStatus('PENDING');
     try {
-      const res = await fetch(`/api/print/${session.id}`, { method: 'POST' });
+      const slotsToSend = slotsArg || (isFullCenterPrint ? 'center' : selectedPrintSlots.join(','));
+      const res = await fetch(`/api/print/${session.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slots: slotsToSend }),
+      });
       if (!res.ok) throw new Error('Gagal menambah antrean');
       pollPrintStatus();
     } catch (e) {
@@ -760,6 +774,7 @@ export default function PhotoboothKiosk() {
     setStep('welcome');
     setTemplateSelection(null);
     setPrintStatus('IDLE');
+    setIsPrintModalOpen(false);
     setAccessCode('');
     setTemplateTimer(60);
     setPaymentTimer(60);
@@ -1397,7 +1412,7 @@ export default function PhotoboothKiosk() {
             {/* Tombol Cetak & Ganti Filter */}
             <div className="flex flex-col sm:flex-row gap-3 md:gap-4 w-full mb-4 md:mb-6">
               <button 
-                onClick={handlePrint}
+                onClick={handlePrintClick}
                 disabled={printStatus !== 'IDLE' && printStatus !== 'FAILED'}
                 className={`flex-1 border-2 md:border-4 px-4 md:px-6 py-3 md:py-5 rounded-2xl md:rounded-3xl text-base md:text-2xl font-black shadow-xl transition-all transform ${
                   printStatus === 'IDLE' || printStatus === 'FAILED'
@@ -1421,6 +1436,126 @@ export default function PhotoboothKiosk() {
                 <span>{isChangingFilter ? 'MEMPROSES...' : 'GANTI FILTER'}</span>
               </button>
             </div>
+
+            {/* Modal Pemilihan Posisi Cetak Kertas A4 (6 Bagian) */}
+            {isPrintModalOpen && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="bg-slate-900/95 border-2 border-emerald-400 p-6 md:p-8 rounded-[2.5rem] shadow-2xl max-w-lg w-full flex flex-col items-center text-white"
+                >
+                  <div className="flex items-center justify-between w-full mb-3">
+                    <h2 className="text-xl md:text-2xl font-black text-emerald-300 flex items-center gap-2">
+                      <Printer size={26} className="text-emerald-400" />
+                      Pilih Posisi Cetak (Kertas A4)
+                    </h2>
+                    <button 
+                      onClick={() => setIsPrintModalOpen(false)}
+                      className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
+                    >
+                      <X size={22} />
+                    </button>
+                  </div>
+
+                  <p className="text-white/80 text-xs md:text-sm mb-4 text-center leading-relaxed">
+                    Kertas A4 muat <b className="text-yellow-300">6 strip foto</b> (3 kolom × 2 baris). Sentuh bagian kosong pada kertas Anda agar kertas foto dapat dihemat dan dipakai ulang!
+                  </p>
+
+                  {/* Simulasi Kertas A4 Interaktif */}
+                  <div className="w-full bg-slate-100 text-slate-800 p-3 rounded-2xl shadow-inner border border-slate-300 mb-4">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 px-1">
+                      <span>📄 Kertas A4 Anda (3 Kolom × 2 Baris)</span>
+                      <span className="text-emerald-600 font-extrabold">
+                        {isFullCenterPrint ? 'Mode 1 Strip Besar' : `${selectedPrintSlots.length} Bagian Dipilih`}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 p-2 bg-white rounded-xl border-2 border-dashed border-slate-300">
+                      {[1, 2, 3, 4, 5, 6].map((slotNum) => {
+                        const isSelected = selectedPrintSlots.includes(slotNum) && !isFullCenterPrint;
+                        const posText = slotNum <= 3 ? 'Baris Atas' : 'Baris Bawah';
+                        const colText = (slotNum - 1) % 3 === 0 ? 'Kiri' : (slotNum - 1) % 3 === 1 ? 'Tengah' : 'Kanan';
+
+                        return (
+                          <button
+                            key={slotNum}
+                            type="button"
+                            onClick={() => {
+                              setIsFullCenterPrint(false);
+                              setSelectedPrintSlots(prev => {
+                                if (prev.includes(slotNum)) {
+                                  if (prev.length === 1) return prev; // Pertahankan minimal 1
+                                  return prev.filter(s => s !== slotNum);
+                                } else {
+                                  return [...prev, slotNum].sort((a,b) => a-b);
+                                }
+                              });
+                            }}
+                            className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all relative cursor-pointer min-h-[95px] ${
+                              isSelected
+                                ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 text-white border-emerald-400 shadow-lg scale-[1.03] ring-2 ring-emerald-300'
+                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/60'
+                            }`}
+                          >
+                            {isSelected ? (
+                              <>
+                                <CheckCircle2 size={24} className="text-white drop-shadow mb-1 animate-pulse" />
+                                <span className="text-xs font-black">Bagian {slotNum}</span>
+                                <span className="text-[10px] font-semibold opacity-90">CETAK</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-lg font-black text-slate-400 mb-0.5">#{slotNum}</span>
+                                <span className="text-[11px] font-bold text-slate-700">{colText}</span>
+                                <span className="text-[9px] text-slate-400">{posText}</span>
+                              </>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Pilihan 1 Strip Penuh di Tengah */}
+                  <div className="flex items-center justify-between w-full px-3 py-2 mb-4 bg-white/5 rounded-xl border border-white/10">
+                    <span className="text-xs text-white/80">Mau cetak 1 strip besar di tengah kertas?</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsFullCenterPrint(prev => !prev)}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-bold border transition-all ${
+                        isFullCenterPrint
+                          ? 'bg-yellow-400 text-slate-900 border-yellow-300 shadow font-black'
+                          : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                      }`}
+                    >
+                      {isFullCenterPrint ? '✓ Mode 1 Strip Tengah Aktif' : 'Pilih 1 Strip Tengah'}
+                    </button>
+                  </div>
+
+                  {/* Tombol Aksi */}
+                  <div className="flex gap-3 w-full">
+                    <button
+                      type="button"
+                      onClick={() => setIsPrintModalOpen(false)}
+                      className="flex-1 bg-white/10 hover:bg-white/20 text-white py-3 md:py-4 rounded-2xl font-bold text-sm md:text-base transition-all"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startPrint()}
+                      className="flex-[2] bg-gradient-to-b from-emerald-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 text-white border-2 border-emerald-300 py-3 md:py-4 rounded-2xl font-black text-sm md:text-base shadow-xl transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <Printer size={20} />
+                      <span>
+                        CETAK SEKARANG {isFullCenterPrint ? '(Tengah)' : `(Bagian ${selectedPrintSlots.join(', ')})`}
+                      </span>
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
 
             {/* Modal Pemilihan Ulang Filter */}
             {filterModalOpen && (

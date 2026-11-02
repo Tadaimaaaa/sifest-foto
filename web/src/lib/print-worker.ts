@@ -58,7 +58,7 @@ export async function processPrintQueue() {
             throw new Error(`File foto cetak belum ditemukan di: ${finalPath}`);
           }
 
-          await adapter.print(`Job-${job.id}`, finalPath, job.copies);
+          await adapter.print(`Job-${job.id}`, finalPath, job.copies, job.slots || '1');
 
           printQueue.updateStatus(job.session_id, 'COMPLETED');
           console.log(`[PrintWorker] Successfully printed session ${job.session_id}`);

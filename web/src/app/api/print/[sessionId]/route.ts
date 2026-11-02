@@ -25,9 +25,17 @@ export async function POST(
     return new NextResponse('Session is not completed yet', { status: 400 });
   }
 
+  let slots = '1';
+  try {
+    const body = await req.json();
+    if (body?.slots) {
+      slots = String(body.slots);
+    }
+  } catch {}
+
   try {
     // Add to print queue. The queue handles double-taps naturally via UNIQUE constraint logic.
-    printQueue.addJob(sessionId, 1);
+    printQueue.addJob(sessionId, 1, slots);
     
     // Trigger worker
     import('@/lib/print-worker').then(m => m.processPrintQueue().catch(console.error));

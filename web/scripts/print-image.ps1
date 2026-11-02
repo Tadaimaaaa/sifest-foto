@@ -6,7 +6,10 @@ param(
     [string]$PrinterName = "",
 
     [Parameter(Mandatory=$false)]
-    [int]$Copies = 1
+    [int]$Copies = 1,
+
+    [Parameter(Mandatory=$false)]
+    [string]$Slots = "1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,6 +41,25 @@ $image = [System.Drawing.Image]::FromFile($ImagePath)
 $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
 $doc.OriginAtMargins = $true
 
+# Parse daftar slot yang dipilih (contoh: "1", "2", "1,2", "center")
+$slotList = @()
+if ($Slots -eq "center" -or $Slots -eq "full") {
+    $slotList = @("center")
+} elseif ($Slots -eq "all") {
+    $slotList = @(1, 2, 3, 4, 5, 6)
+} else {
+    $rawParts = $Slots.Split(",")
+    foreach ($p in $rawParts) {
+        $num = 0
+        if ([int]::TryParse($p.Trim(), [ref]$num) -and $num -ge 1 -and $num -le 6) {
+            $slotList += $num
+        }
+    }
+    if ($slotList.Count -eq 0) {
+        $slotList = @(1)
+    }
+}
+
 $doc.add_PrintPage({
     param($sender, $ev)
     $bounds = $ev.MarginBounds
@@ -45,24 +67,68 @@ $doc.add_PrintPage({
         $bounds = $ev.PageBounds
     }
 
-    $imgRatio = $image.Width / $image.Height
-    $pageRatio = $bounds.Width / $bounds.Height
+    $ev.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
 
-    $drawWidth = $bounds.Width
-    $drawHeight = $bounds.Height
-    $posX = $bounds.X
-    $posY = $bounds.Y
+    if ($slotList -contains "center") {
+        # Gambar di tengah halaman penuh (1 strip besar)
+        $imgRatio = $image.Width / $image.Height
+        $pageRatio = $bounds.Width / $bounds.Height
+        $drawWidth = $bounds.Width
+        $drawHeight = $bounds.Height
+        $posX = $bounds.X
+        $posY = $bounds.Y
 
-    if ($imgRatio -gt $pageRatio) {
-        $drawHeight = [int]($bounds.Width / $imgRatio)
-        $posY += [int](($bounds.Height - $drawHeight) / 2)
+        if ($imgRatio -gt $pageRatio) {
+            $drawHeight = [int]($bounds.Width / $imgRatio)
+            $posY += [int](($bounds.Height - $drawHeight) / 2)
+        } else {
+            $drawWidth = [int]($bounds.Height * $imgRatio)
+            $posX += [int](($bounds.Width - $drawWidth) / 2)
+        }
+
+        $ev.Graphics.DrawImage($image, $posX, $posY, $drawWidth, $drawHeight)
     } else {
-        $drawWidth = [int]($bounds.Height * $imgRatio)
-        $posX += [int](($bounds.Width - $drawWidth) / 2)
+        # Grid 6 Slot pada Kertas A4 (3 Kolom x 2 Baris)
+        # Baris 1 (Atas): Slot 1 (Kiri), Slot 2 (Tengah), Slot 3 (Kanan)
+        # Baris 2 (Bawah): Slot 4 (Kiri), Slot 5 (Tengah), Slot 6 (Kanan)
+        $cols = 3
+        $rows = 2
+        $slotW = $bounds.Width / $cols
+        $slotH = $bounds.Height / $rows
+
+        foreach ($slotNum in $slotList) {
+            $row = [math]::Floor(($slotNum - 1) / $cols)
+            $col = ($slotNum - 1) % $cols
+
+            $slotX = $bounds.X + ($col * $slotW)
+            $slotY = $bounds.Y + ($row * $slotH)
+
+            # Padding dalam batas slot agar tidak mepet batas potong
+            $padX = 10
+            $padY = 15
+            $availW = $slotW - ($padX * 2)
+            $availH = $slotH - ($padY * 2)
+
+            $imgRatio = $image.Width / $image.Height
+            $slotRatio = $availW / $availH
+
+            $drawW = $availW
+            $drawH = $availH
+            $posX = $slotX + $padX
+            $posY = $slotY + $padY
+
+            if ($imgRatio -gt $slotRatio) {
+                $drawH = [int]($availW / $imgRatio)
+                $posY += [int](($availH - $drawH) / 2)
+            } else {
+                $drawW = [int]($availH * $imgRatio)
+                $posX += [int](($availW - $drawW) / 2)
+            }
+
+            $ev.Graphics.DrawImage($image, $posX, $posY, $drawW, $drawH)
+        }
     }
 
-    $ev.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-    $ev.Graphics.DrawImage($image, $posX, $posY, $drawWidth, $drawHeight)
     $ev.HasMorePages = $false
 })
 
@@ -70,5 +136,4 @@ $doc.Print()
 $image.Dispose()
 $doc.Dispose()
 
-Write-Output "SUCCESS: Printed to $($doc.PrinterSettings.PrinterName)"
-
+Write-Output "SUCCESS: Printed to $($doc.PrinterSettings.PrinterName) (Slots: $($slotList -join ','))"
