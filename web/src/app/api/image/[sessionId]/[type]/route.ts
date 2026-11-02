@@ -3,6 +3,27 @@ import path from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 
+export const dynamic = 'force-dynamic';
+
+function getStorageDir() {
+  if (process.env.STORAGE_PATH) {
+    return path.resolve(process.cwd(), process.env.STORAGE_PATH);
+  }
+  const candidate1 = path.resolve(process.cwd(), '../storage');
+  if (existsSync(candidate1)) return candidate1;
+
+  const candidate2 = path.resolve(process.cwd(), 'storage');
+  if (existsSync(candidate2)) return candidate2;
+
+  let current = process.cwd();
+  for (let i = 0; i < 3; i++) {
+    const candidate = path.join(current, 'storage');
+    if (existsSync(candidate)) return candidate;
+    current = path.dirname(current);
+  }
+  return path.resolve(process.cwd(), '../storage');
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { sessionId: string; type: string } }
@@ -31,12 +52,13 @@ export async function GET(
     return new NextResponse('Invalid image type', { status: 400 });
   }
 
-  const storagePath = process.env.STORAGE_PATH || '../storage';
-  const absoluteStoragePath = path.resolve(process.cwd(), storagePath);
+  const absoluteStoragePath = getStorageDir();
   const filePath = path.join(absoluteStoragePath, 'sessions', sessionId, subDir, fileName);
 
-  // Security check: ensure path is within storage directory
-  if (!filePath.startsWith(absoluteStoragePath)) {
+  // Security check: ensure normalized path is within storage directory
+  const normalizedFile = path.normalize(filePath).toLowerCase();
+  const normalizedRoot = path.normalize(absoluteStoragePath).toLowerCase();
+  if (!normalizedFile.startsWith(normalizedRoot)) {
     return new NextResponse('Forbidden', { status: 403 });
   }
 
@@ -57,7 +79,6 @@ export async function GET(
       headers['Content-Disposition'] = `attachment; filename="SI-FEST-2026-${sessionId}.jpg"`;
     }
 
-    // Set caching headers aggressively for immutable photos
     return new NextResponse(fileBuffer, { headers });
   } catch (error) {
     console.error(`Error serving image ${filePath}:`, error);

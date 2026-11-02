@@ -772,16 +772,26 @@ export default function PhotoboothKiosk() {
   const [tunnelUrl, setTunnelUrl] = useState<string>('');
   const publicBaseUrl = process.env.NEXT_PUBLIC_PHOTO_BASE_URL;
 
-  useEffect(() => {
-    fetch('/api/config')
-      .then(res => res.json())
-      .then(data => {
-        if (data?.tunnelUrl) {
-          setTunnelUrl(data.tunnelUrl);
-        }
-      })
-      .catch(() => {});
+  const refreshTunnelConfig = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/config?t=${Date.now()}`);
+      const data = await res.json();
+      if (data?.tunnelUrl) {
+        setTunnelUrl(data.tunnelUrl);
+      }
+    } catch (e) {}
   }, []);
+
+  useEffect(() => {
+    refreshTunnelConfig();
+  }, [refreshTunnelConfig]);
+
+  // When session completes, immediately refresh tunnel URL so QR code always holds the freshest public link
+  useEffect(() => {
+    if (session && session.status === 'completed') {
+      refreshTunnelConfig();
+    }
+  }, [session?.status, refreshTunnelConfig]);
 
   // Background elements for official.sifest.my.id style
   const Background = () => (
@@ -1355,16 +1365,23 @@ export default function PhotoboothKiosk() {
             </h1>
             
             {qrUrl ? (
-              <div className="flex gap-4 md:gap-8 mb-6 md:mb-8 items-center bg-white/10 p-4 md:p-6 rounded-2xl md:rounded-3xl border-2 border-white/30">
-                <div className="bg-white p-3 md:p-4 rounded-xl md:rounded-2xl shadow-xl shrink-0">
-                  <QRCodeSVG value={qrUrl} size={110} className="md:w-[150px] md:h-[150px]" level="M" />
+              <div className="flex flex-col gap-2 mb-6 md:mb-8 w-full">
+                <div className="flex gap-4 md:gap-8 items-center bg-white/10 p-4 md:p-6 rounded-2xl md:rounded-3xl border-2 border-white/30">
+                  <div className="bg-white p-3 md:p-4 rounded-xl md:rounded-2xl shadow-xl shrink-0">
+                    <QRCodeSVG value={qrUrl} size={110} className="md:w-[150px] md:h-[150px]" level="M" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl md:text-3xl font-bold text-white mb-1 md:mb-2">Scan untuk Download!</h3>
+                    <p className="text-sky-100 text-sm md:text-lg leading-relaxed">
+                      Arahkan kamera HP kamu ke QR Code ini untuk menyimpan hasil foto kamu (Gratis!). Tautan hanya berlaku 1 jam.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-xl md:text-3xl font-bold text-white mb-1 md:mb-2">Scan untuk Download!</h3>
-                  <p className="text-sky-100 text-sm md:text-lg leading-relaxed">
-                    Arahkan kamera HP kamu ke QR Code ini untuk menyimpan hasil foto kamu (Gratis!). Tautan hanya berlaku 1 jam.
+                {(activeBaseUrl.includes('localhost') || activeBaseUrl.includes('127.0.0.1')) && (
+                  <p className="text-xs text-amber-200 bg-amber-900/60 border border-amber-400/40 px-3 py-1.5 rounded-xl font-semibold">
+                    ⚠️ Cloudflare Tunnel belum terdeteksi. Pastikan file <b>JALANKAN-HARI-H.bat</b> sedang berjalan di laptop agar HP pengunjung bisa download.
                   </p>
-                </div>
+                )}
               </div>
             ) : (
               <p className="text-xl md:text-3xl text-white font-bold mb-6 md:mb-8 leading-relaxed">
