@@ -164,11 +164,14 @@ const WebcamMirror = ({ isCapturing }: { isCapturing?: boolean }) => {
               dslrFailCountRef.current = 0;
             }}
             onError={() => {
-              console.warn("Koneksi stream DSLR gagal atau digiCamControl belum aktif.");
+              // Jika sedang dalam proses capture foto (shutter jepret), jangan anggap error
+              if (isCapturing) return;
+
+              console.warn("Koneksi stream DSLR sedang menunggu digiCamControl...");
               dslrFailCountRef.current++;
               
-              if (dslrFailCountRef.current >= 4) {
-                // Auto fallback to Webcam after 4 consecutive fails so preview is not stuck, but avoids false dropouts during capture
+              if (dslrFailCountRef.current >= 10) {
+                // Auto fallback ke Webcam setelah 10x kegagalan (~15-20 detik)
                 setCameraMode('webcam');
                 setDslrConnected(false);
                 setIsConnectingDslr(false);
@@ -178,7 +181,7 @@ const WebcamMirror = ({ isCapturing }: { isCapturing?: boolean }) => {
                 retryTimeoutRef.current = setTimeout(() => {
                   retryTimeoutRef.current = null;
                   setStreamKey(Date.now());
-                }, 500);
+                }, 1500);
               }
             }}
           />

@@ -115,7 +115,20 @@ async function main() {
   freePort(3001);
 
   console.log('🔍 [1/4] Memeriksa koneksi digiCamControl (Kamera DSLR)...');
-  const dccRunning = await checkDigiCamControl();
+  let dccRunning = await checkDigiCamControl();
+  if (!dccRunning) {
+    const dccExe = 'C:\\Program Files (x86)\\digiCamControl\\CameraControl.exe';
+    if (fs.existsSync(dccExe)) {
+      console.log('   🔄 Menjalankan aplikasi digiCamControl secara otomatis...');
+      try {
+        execSync(`start "" "${dccExe}"`, { stdio: 'ignore', shell: true });
+        console.log('   ⏳ Menunggu 5 detik agar digiCamControl siap...');
+        await new Promise(r => setTimeout(r, 5000));
+        dccRunning = await checkDigiCamControl();
+      } catch (e) {}
+    }
+  }
+
   if (dccRunning) {
     console.log('   ✅ digiCamControl aktif & terhubung di port 5513.');
   } else {

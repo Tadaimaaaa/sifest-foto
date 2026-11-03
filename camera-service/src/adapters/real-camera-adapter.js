@@ -38,16 +38,31 @@ const fs = __importStar(require("node:fs/promises"));
 const path = __importStar(require("node:path"));
 const http = __importStar(require("node:http"));
 const config_1 = require("../config");
-function httpGet(url, timeoutMs = 3000) {
+const dccAgent = new http.Agent({
+    keepAlive: true,
+    maxSockets: 3,
+    keepAliveMsecs: 5000,
+});
+function httpGetDetails(url, timeoutMs = 2500) {
     return new Promise((resolve) => {
-        const req = http.get(url, (res) => {
+        const req = http.get(url, { agent: dccAgent }, (res) => {
             if (res.statusCode !== 200) {
                 res.resume();
                 return resolve(null);
             }
+            const disposition = res.headers['content-disposition'] || '';
+            const match = disposition.match(/filename="?([^";]+)"?/i);
+            const filename = match ? match[1] : undefined;
             const chunks = [];
             res.on('data', (c) => chunks.push(c));
-            res.on('end', () => resolve(Buffer.concat(chunks)));
+            res.on('end', () => {
+                const buffer = Buffer.concat(chunks);
+                resolve({
+                    buffer,
+                    filename,
+                    length: buffer.length,
+                });
+            });
         });
         req.on('error', () => resolve(null));
         req.setTimeout(timeoutMs, () => {
@@ -56,11 +71,27 @@ function httpGet(url, timeoutMs = 3000) {
         });
     });
 }
+function httpHead(url, timeoutMs = 1000) {
+    return new Promise((resolve) => {
+        const req = http.request(url, { method: 'HEAD', agent: dccAgent }, (res) => {
+            res.resume();
+            if (res.statusCode !== 200)
+                return resolve(null);
+            const disposition = res.headers['content-disposition'] || '';
+            const match = disposition.match(/filename="?([^";]+)"?/i);
+            resolve({ filename: match ? match[1] : undefined });
+        });
+        req.on('error', () => resolve(null));
+        req.setTimeout(timeoutMs, () => {
+            req.destroy();
+            resolve(null);
+        });
+        req.end();
+    });
+}
 function triggerCapture() {
     try {
-        // Satu perintah capture tunggal resmi ke digiCamControl
-        // Kamera akan jepret tepat 1 kali tanpa duplikasi
-        const req = http.get('http://127.0.0.1:5513/?CMD=Capture', (res) => res.resume());
+        const req = http.get('http://127.0.0.1:5513/?CMD=Capture', { agent: dccAgent }, (res) => res.resume());
         req.on('error', () => { });
         req.setTimeout(3000, () => req.destroy());
     }
@@ -70,6 +101,7 @@ class RealCameraAdapter {
     status = 'disconnected';
     baselineLen = 0;
     baselineHead = null;
+    baselineFilename = null;
     async connect() {
         this.status = 'connecting';
         const isAlive = await this.checkHttpServer();
@@ -87,24 +119,26 @@ class RealCameraAdapter {
         this.status = 'disconnected';
         this.baselineLen = 0;
         this.baselineHead = null;
+        this.baselineFilename = null;
         console.log('[RealCameraAdapter] Disconnected');
     }
-    // Dipanggil otomatis di background saat countdown 5 detik berjalan
-    // Mengunci ukuran & header foto lama ke memori SEBELUM shutter ditekan
+    // Dipanggil otomatis di background saat countdown berjalan
+    // Mengunci ukuran, header, dan filename foto lama SEBELUM shutter ditekan
     async prepareCapture() {
         try {
-            const current = await httpGet('http://127.0.0.1:5513/preview.jpg', 2000);
-            if (current && current.length > 10000 && current[0] === 0xFF && current[1] === 0xD8) {
+            const current = await httpGetDetails('http://127.0.0.1:5513/preview.jpg', 2000);
+            if (current && current.length > 10000 && current.buffer[0] === 0xFF && current.buffer[1] === 0xD8) {
                 this.baselineLen = current.length;
-                this.baselineHead = current.subarray(0, 64);
-                console.log(`[RealCameraAdapter] Baseline locked during countdown: ${this.baselineLen} bytes`);
+                this.baselineHead = current.buffer.subarray(0, 64);
+                this.baselineFilename = current.filename || null;
+                console.log(`[RealCameraAdapter] Baseline locked during countdown: filename=${this.baselineFilename}, len=${this.baselineLen}`);
             }
         }
         catch { }
     }
     async checkHttpServer() {
         return new Promise((resolve) => {
-            const req = http.get('http://127.0.0.1:5513/', { timeout: 1000 }, (res) => {
+            const req = http.get('http://127.0.0.1:5513/', { agent: dccAgent, timeout: 1000 }, (res) => {
                 res.resume();
                 resolve(res.statusCode === 200);
             });
@@ -145,44 +179,58 @@ class RealCameraAdapter {
             await fs.mkdir(sessionDir, { recursive: true });
             const fileName = `photo-${photoIndex}.jpg`;
             const filePath = path.join(sessionDir, fileName);
-            console.log(`[RealCameraAdapter] Triggering capture for ${fileName} INSTANTLY...`);
-            // Kunci nilai baseline sebelum tombol jepret ditekan
+            // Pastikan baseline foto lama diketahui sebelum shutter ditekan
+            if (!this.baselineFilename && this.baselineLen === 0) {
+                const quickHead = await httpHead('http://127.0.0.1:5513/preview.jpg', 800);
+                if (quickHead?.filename) {
+                    this.baselineFilename = quickHead.filename;
+                }
+            }
             const initialBaselineLen = this.baselineLen;
             const initialBaselineHead = this.baselineHead;
+            const initialBaselineFilename = this.baselineFilename;
+            console.log(`[RealCameraAdapter] Triggering capture for ${fileName} INSTANTLY... (prior baseline: ${initialBaselineFilename || initialBaselineLen})`);
             // 1. TRIGGER CEKREK SEKETIKA pada milidetik 0!
             triggerCapture();
             // 2. Beri waktu kamera Canon 700D membuka rana dan mentransfer file via USB (minimal 1200ms)
             await new Promise((r) => setTimeout(r, 1200));
             // 3. Polling sampai foto BARU benar-benar selesai ditransfer oleh digiCamControl
             let imageBuffer = null;
+            let newFilename = null;
             const pollStart = Date.now();
-            while (Date.now() - pollStart < 12000) {
-                const current = await httpGet('http://127.0.0.1:5513/preview.jpg', 2000);
+            while (Date.now() - pollStart < 14000) {
+                const current = await httpGetDetails('http://127.0.0.1:5513/preview.jpg', 2000);
                 if (current &&
                     current.length > 10000 &&
-                    current[0] === 0xFF &&
-                    current[1] === 0xD8) {
-                    // Bandingkan dengan baseline foto sebelum shutter ditekan
-                    if (initialBaselineLen > 0 && initialBaselineHead) {
-                        // Foto BARU pasti memiliki ukuran atau byte header yang berbeda dari foto lama
-                        if (current.length !== initialBaselineLen || !current.subarray(0, 64).equals(initialBaselineHead)) {
-                            imageBuffer = current;
-                            this.baselineLen = current.length;
-                            this.baselineHead = current.subarray(0, 64);
-                            console.log(`[RealCameraAdapter] New photo confirmed: ${current.length} bytes (was ${initialBaselineLen}) in ${Date.now() - startTime}ms`);
-                            break;
+                    current.buffer[0] === 0xFF &&
+                    current.buffer[1] === 0xD8) {
+                    let isNewPhoto = false;
+                    // Metode 1 (Paling Akurat): Jika filename berubah dari baseline foto sebelumnya
+                    if (initialBaselineFilename && current.filename) {
+                        if (current.filename !== initialBaselineFilename) {
+                            isNewPhoto = true;
                         }
                     }
-                    else {
-                        // Jika baseline awal belum ada (misal sesi baru pertama kali dinyalakan),
-                        // tunggu minimal 2.5 detik agar transfer selesai, lalu ambil foto baru
-                        if (Date.now() - pollStart > 2500) {
-                            imageBuffer = current;
-                            this.baselineLen = current.length;
-                            this.baselineHead = current.subarray(0, 64);
-                            console.log(`[RealCameraAdapter] First photo confirmed without prior baseline: ${current.length} bytes in ${Date.now() - startTime}ms`);
-                            break;
+                    // Metode 2: Jika ukuran atau byte header JPEG berubah dari baseline foto sebelumnya
+                    else if (initialBaselineLen > 0 && initialBaselineHead) {
+                        if (current.length !== initialBaselineLen || !current.buffer.subarray(0, 64).equals(initialBaselineHead)) {
+                            isNewPhoto = true;
                         }
+                    }
+                    // Metode 3: Jika belum pernah ada foto sama sekali di digiCamControl
+                    else if (!initialBaselineFilename && initialBaselineLen === 0) {
+                        if (Date.now() - pollStart > 2500) {
+                            isNewPhoto = true;
+                        }
+                    }
+                    if (isNewPhoto) {
+                        imageBuffer = current.buffer;
+                        newFilename = current.filename || null;
+                        this.baselineLen = current.length;
+                        this.baselineHead = current.buffer.subarray(0, 64);
+                        this.baselineFilename = current.filename || null;
+                        console.log(`[RealCameraAdapter] New photo confirmed: ${current.filename || current.length + ' bytes'} in ${Date.now() - startTime}ms`);
+                        break;
                     }
                 }
                 await new Promise((r) => setTimeout(r, 200));
@@ -193,7 +241,7 @@ class RealCameraAdapter {
             }
             // 4. Simpan foto asli baru ke storage sesi
             await fs.writeFile(filePath, imageBuffer);
-            console.log(`[RealCameraAdapter] Saved ${filePath} (${imageBuffer.length} bytes) in ${Date.now() - startTime}ms`);
+            console.log(`[RealCameraAdapter] Saved ${filePath} (${imageBuffer.length} bytes, file: ${newFilename || 'ok'}) in ${Date.now() - startTime}ms`);
             // 5. Beri jeda 300ms agar buffer kamera bersih, lalu buka kembali cermin LiveView
             setTimeout(() => {
                 this.ensureLiveView();
@@ -218,12 +266,12 @@ class RealCameraAdapter {
     }
     ensureLiveView() {
         try {
-            const req1 = http.get('http://127.0.0.1:5513/?CMD=LiveViewWnd_Show', (res) => res.resume());
+            const req1 = http.get('http://127.0.0.1:5513/?CMD=LiveViewWnd_Show', { agent: dccAgent }, (res) => res.resume());
             req1.on('error', () => { });
             req1.setTimeout(1500, () => req1.destroy());
             setTimeout(() => {
                 try {
-                    const req2 = http.get('http://127.0.0.1:5513/?CMD=LiveView_Start', (res) => res.resume());
+                    const req2 = http.get('http://127.0.0.1:5513/?CMD=LiveView_Start', { agent: dccAgent }, (res) => res.resume());
                     req2.on('error', () => { });
                     req2.setTimeout(1500, () => req2.destroy());
                 }
