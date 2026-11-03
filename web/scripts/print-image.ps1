@@ -32,8 +32,54 @@ if (-not $doc.PrinterSettings.IsValid) {
     exit 2
 }
 
+# 1. Konfigurasi Driver Printer ke Kertas Premium Glossy & Kualitas Cetak HD (High Quality)
+try {
+    $targetPrinterName = $doc.PrinterSettings.PrinterName
+    $config = Get-PrintConfiguration -PrinterName $targetPrinterName -ErrorAction SilentlyContinue
+    if ($config -and $config.PrintTicketXML) {
+        [xml]$ticket = $config.PrintTicketXML
+        $changed = $false
+
+        # Set Jenis Kertas: PhotographicHighGloss (Epson Premium Glossy / Photo Paper Glossy)
+        $mediaType = $ticket.PrintTicket.Feature | Where-Object { $_.name -eq 'psk:PageMediaType' }
+        if ($mediaType -and $mediaType.Option.name -ne 'psk:PhotographicHighGloss') {
+            $mediaType.Option.name = 'psk:PhotographicHighGloss'
+            $changed = $true
+        }
+
+        # Set Kualitas Output: HighQuality (Kualitas Cetak Foto HD)
+        $quality = $ticket.PrintTicket.Feature | Where-Object { $_.name -eq 'psk:PageOutputQuality' }
+        if ($quality -and $quality.Option.name -ne 'ns0000:HighQuality') {
+            $quality.Option.name = 'ns0000:HighQuality'
+            $changed = $true
+        }
+
+        # Set Resolusi: Quality (720x720 DPI HD)
+        $res = $ticket.PrintTicket.Feature | Where-Object { $_.name -eq 'psk:PageResolution' }
+        if ($res -and $res.Option.name -ne 'ns0000:Quality') {
+            $res.Option.name = 'ns0000:Quality'
+            $changed = $true
+        }
+
+        if ($changed) {
+            Set-PrintConfiguration -PrinterName $targetPrinterName -PrintTicketXml $ticket.OuterXml -ErrorAction SilentlyContinue
+        }
+    }
+} catch {
+    # Abaikan jika driver tidak mendukung print ticket XML
+}
+
 if ($Copies -gt 1) {
     $doc.PrinterSettings.Copies = [short]$Copies
+}
+
+# 2. Aktifkan Mode Warna & Resolusi High pada PageSettings .NET
+$doc.DefaultPageSettings.Color = $true
+$highRes = $doc.PrinterSettings.PrinterResolutions | Where-Object {
+    $_.Kind -eq [System.Drawing.Printing.PrinterResolutionKind]::High
+}
+if ($highRes) {
+    $doc.DefaultPageSettings.PrinterResolution = $highRes
 }
 
 $image = [System.Drawing.Image]::FromFile($ImagePath)
@@ -67,7 +113,11 @@ $doc.add_PrintPage({
         $bounds = $ev.PageBounds
     }
 
+    # 3. Rendering Engine GDI+ Kualitas Tertinggi (Ultra-HD Bicubic & Anti-Aliasing)
     $ev.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $ev.Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+    $ev.Graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $ev.Graphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
 
     if ($slotList -contains "center") {
         # Gambar di tengah halaman penuh (1 strip besar)
@@ -136,4 +186,4 @@ $doc.Print()
 $image.Dispose()
 $doc.Dispose()
 
-Write-Output "SUCCESS: Printed to $($doc.PrinterSettings.PrinterName) (Slots: $($slotList -join ','))"
+Write-Output "SUCCESS: Printed to $($doc.PrinterSettings.PrinterName) (Paper: Premium Glossy HD, Slots: $($slotList -join ','))"
