@@ -481,6 +481,7 @@ export default function PhotoboothKiosk() {
   }, [step, fetchAvailableTemplates]);
 
   const templateSelectionRef = useRef(templateSelection);
+  const printPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     templateSelectionRef.current = templateSelection;
   }, [templateSelection]);
@@ -620,7 +621,11 @@ export default function PhotoboothKiosk() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slots: slotsToSend }),
       });
-      if (!res.ok) throw new Error('Gagal menambah antrean');
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error('Gagal menambah antrean cetak:', errText);
+        throw new Error(errText || 'Gagal menambah antrean');
+      }
       pollPrintStatus();
     } catch (e) {
       setPrintStatus('FAILED');
@@ -629,23 +634,36 @@ export default function PhotoboothKiosk() {
 
   const pollPrintStatus = () => {
     if (!session) return;
-    const interval = setInterval(async () => {
+    if (printPollIntervalRef.current) {
+      clearInterval(printPollIntervalRef.current);
+    }
+    printPollIntervalRef.current = setInterval(async () => {
       try {
         const res = await fetch(`/api/print/${session.id}`);
         const data = await res.json();
         if (data.status) {
            setPrintStatus(data.status);
            if (data.status === 'COMPLETED' || data.status === 'FAILED') {
-             clearInterval(interval);
+             if (printPollIntervalRef.current) {
+               clearInterval(printPollIntervalRef.current);
+               printPollIntervalRef.current = null;
+             }
            }
         }
       } catch (err) {
-        clearInterval(interval);
+        if (printPollIntervalRef.current) {
+          clearInterval(printPollIntervalRef.current);
+          printPollIntervalRef.current = null;
+        }
       }
     }, 2000);
   };
 
   const resetSelection = () => {
+    if (printPollIntervalRef.current) {
+      clearInterval(printPollIntervalRef.current);
+      printPollIntervalRef.current = null;
+    }
     setIsCompletedDismissed(true);
     setFinalImageError(false);
     resetSession();

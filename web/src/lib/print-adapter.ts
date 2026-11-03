@@ -85,9 +85,14 @@ export class WindowsPrintAdapter implements PrintAdapter {
     }
 
     const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -ImagePath "${absoluteFile}" -PrinterName "${printer}" -Copies ${copies} -Slots "${slots}"`;
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 45000 });
+    const { stdout, stderr } = await execAsync(cmd, { timeout: 60000 });
 
-    if (stderr && stderr.includes('Error')) {
+    if (stdout && stdout.includes('SUCCESS:')) {
+      console.log(`[WindowsPrintAdapter] ${stdout.trim()}`);
+      return;
+    }
+
+    if (stderr && (stderr.includes('Exception') || stderr.includes('Error:'))) {
       throw new Error(stderr.trim());
     }
     console.log(`[WindowsPrintAdapter] ${stdout.trim()}`);
