@@ -162,17 +162,58 @@ async function main() {
     console.error('❌ Gagal menjalankan Web Server:', err.message);
   });
 
-  // 3. Start Cloudflare Tunnel
-  console.log('🌐 [4/4] Menghubungkan ke Cloudflare Tunnel Edge (Akses Publik & QRIS)...');
+  // 3. Start Cloudflare Tunnel (Opsional untuk Akses Publik / QRIS Online)
+  console.log('🌐 [4/4] Mempersiapkan Akses Cloudflare Tunnel & WiFi Lokal...');
   const cloudflaredBin = getCloudflaredPath();
   let tunnelProcess = null;
+  let tunnelFound = false;
+  let bannerPrinted = false;
+
+  function printReadyBanner(liveTunnelUrl = null) {
+    if (bannerPrinted) return;
+    bannerPrinted = true;
+
+    const localIp = getLocalIp();
+
+    console.log('');
+    console.log('================================================================');
+    console.log('  🎉 SEMUA SISTEM PHOTOBOOTH BERHASIL AKTIF & SIAP DIGUNAKAN!   ');
+    console.log('================================================================');
+    console.log(`  🖥️  Layar Utama di Laptop      : http://localhost:3000/photobooth`);
+    console.log(`  📱  LINK BUKA DI IPAD (1 WiFi) : http://${localIp}:3000/photobooth`);
+    if (liveTunnelUrl) {
+      console.log(`  🌐  LINK BUKA DI IPAD (Cloud)   : ${liveTunnelUrl}/photobooth`);
+    } else {
+      console.log(`  🌐  Mode Akses                  : Jaringan Lokal / WiFi (Offline Ready)`);
+    }
+    console.log(`  💳  Payment Gateway             : DOKU (Otomatis Webhook & QRIS)`);
+    console.log(`  ⚙️  Panel Admin Template        : http://${localIp}:3000/photobooth/admin (PIN: 12345)`);
+    console.log('================================================================');
+    console.log('  👉 DI IPAD: Buka salah satu link di atas pada browser Safari!');
+    console.log('  👉 Cara 1 (Termudah): Tap tombol "Layar Penuh" di pojok kanan atas layar iPad!');
+    console.log('  👉 Cara 2 (PWA): Tap Share [↑] -> pilih "Tambah ke Layar Utama" (Add to Home Screen)');
+    console.log('  (Tekan Ctrl + C di terminal ini untuk mematikan semua server)');
+    console.log('================================================================');
+
+    // Buka browser otomatis ke photobooth
+    try {
+      execSync('start http://localhost:3000/photobooth', { stdio: 'ignore', shell: true });
+    } catch (e) {}
+  }
+
+  // Safety fallback: jika tunnel butuh waktu lama atau offline, buka browser setelah 6 detik
+  const bannerFallbackTimer = setTimeout(() => {
+    printReadyBanner(null);
+  }, 6000);
 
   if (cloudflaredBin) {
+    try {
+      execSync('taskkill /F /IM cloudflared.exe', { stdio: 'ignore' });
+    } catch (e) {}
+
     tunnelProcess = spawn(cloudflaredBin, ['tunnel', '--url', 'http://localhost:3000'], {
       shell: false,
     });
-
-    let tunnelFound = false;
 
     const handleOutput = (data) => {
       const text = data.toString();
@@ -182,69 +223,46 @@ async function main() {
         const validTunnel = matches.find((url) => !url.includes('api.trycloudflare.com'));
         if (validTunnel) {
           tunnelFound = true;
+          clearTimeout(bannerFallbackTimer);
           const liveTunnelUrl = validTunnel;
         
-        // Save to storage/tunnel-url.txt
-        try {
-          fs.writeFileSync(tunnelFile, liveTunnelUrl, 'utf-8');
-        } catch (e) {}
+          // Save to storage/tunnel-url.txt
+          try {
+            fs.writeFileSync(tunnelFile, liveTunnelUrl, 'utf-8');
+          } catch (e) {}
 
-        // Update web/.env.local
-        try {
-          if (fs.existsSync(envLocalPath)) {
-            let envContent = fs.readFileSync(envLocalPath, 'utf-8');
-            if (envContent.includes('NEXT_PUBLIC_PHOTO_BASE_URL=')) {
-              envContent = envContent.replace(
-                /NEXT_PUBLIC_PHOTO_BASE_URL=.*/,
-                `NEXT_PUBLIC_PHOTO_BASE_URL=${liveTunnelUrl}`
-              );
-            } else {
-              envContent += `\nNEXT_PUBLIC_PHOTO_BASE_URL=${liveTunnelUrl}\n`;
+          // Update web/.env.local
+          try {
+            if (fs.existsSync(envLocalPath)) {
+              let envContent = fs.readFileSync(envLocalPath, 'utf-8');
+              if (envContent.includes('NEXT_PUBLIC_PHOTO_BASE_URL=')) {
+                envContent = envContent.replace(
+                  /NEXT_PUBLIC_PHOTO_BASE_URL=.*/,
+                  `NEXT_PUBLIC_PHOTO_BASE_URL=${liveTunnelUrl}`
+                );
+              } else {
+                envContent += `\nNEXT_PUBLIC_PHOTO_BASE_URL=${liveTunnelUrl}\n`;
+              }
+              fs.writeFileSync(envLocalPath, envContent, 'utf-8');
             }
-            fs.writeFileSync(envLocalPath, envContent, 'utf-8');
-          }
-        } catch (e) {}
+          } catch (e) {}
 
-        const localIp = getLocalIp();
-
-        console.log('');
-        console.log('================================================================');
-        console.log('  🎉 SEMUA SISTEM PHOTOBOOTH BERHASIL AKTIF & SIAP DIGUNAKAN!   ');
-        console.log('================================================================');
-        console.log(`  📱  LINK BUKA DI IPAD (1 WiFi) : http://${localIp}:3000/photobooth`);
-        console.log(`  🌐  LINK BUKA DI IPAD (Cloud)   : ${liveTunnelUrl}/photobooth`);
-        console.log(`  🖥️  Layar di Laptop             : http://localhost:3000/photobooth`);
-        console.log(`  💳  Payment Gateway             : DOKU (Otomatis Webhook & QRIS)`);
-        console.log(`  ⚙️  Panel Admin Template        : http://${localIp}:3000/photobooth/admin (PIN: 12345)`);
-        console.log('================================================================');
-        console.log('  👉 DI IPAD: Buka salah satu link di atas pada browser Safari!');
-        console.log('  👉 Cara 1 (Termudah): Tap tombol "Layar Penuh" di pojok kanan atas layar iPad!');
-        console.log('  👉 Cara 2 (PWA): Tap Share [↑] -> pilih "Tambah ke Layar Utama" (Add to Home Screen)');
-        console.log('  👉 Cara 3 (Safari): Tap tombol "aA" di samping kolom URL -> "Sembunyikan Bilah Alat"');
-        console.log('  (Tekan Ctrl + C di terminal ini untuk mematikan semua server)');
-        console.log('================================================================');
-
-        // Open browser
-        try {
-          execSync('start http://localhost:3000/photobooth', { stdio: 'ignore', shell: true });
-        } catch (e) {}
+          printReadyBanner(liveTunnelUrl);
+        }
       }
-    }
-  };
+    };
 
     tunnelProcess.stdout.on('data', handleOutput);
     tunnelProcess.stderr.on('data', handleOutput);
 
     tunnelProcess.on('exit', (code) => {
-      console.log(`[Tunnel] Process exited with code ${code}`);
+      if (!tunnelFound) {
+        console.log(`   ℹ️ Cloudflare tunnel offline/selesai (code ${code}). Melanjutkan dalam mode WiFi Lokal.`);
+        printReadyBanner(null);
+      }
     });
   } else {
-    const localIp = getLocalIp();
-    console.log('⚠️  cloudflared.exe tidak ditemukan. Sistem berjalan dalam mode lokal.');
-    console.log(`👉 Akses di iPad (1 WiFi): http://${localIp}:3000/photobooth`);
-    try {
-      execSync('start http://localhost:3000/photobooth', { stdio: 'ignore', shell: true });
-    } catch (e) {}
+    printReadyBanner(null);
   }
 
   // Keep event loop alive indefinitely so process never terminates unexpectedly
