@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Banknote, ArrowLeft, Camera, Sparkles, CheckCircle2, Loader2, Palette, Check, X, Clock, Video, AlertTriangle, SwitchCamera, RefreshCw, Maximize, Minimize, Printer } from 'lucide-react';
+import { QrCode, Banknote, ArrowLeft, Camera, Sparkles, CheckCircle2, Loader2, Palette, Check, X, Clock, Video, AlertTriangle, SwitchCamera, RefreshCw, Maximize, Minimize, Printer, Download } from 'lucide-react';
 
 const PHOTO_FILTERS = [
   {
@@ -485,132 +485,12 @@ export default function PhotoboothKiosk() {
     templateSelectionRef.current = templateSelection;
   }, [templateSelection]);
 
-  // 1. Template selection 60-second countdown (auto-start when timer reaches 0 only on template step and no session exists)
+  // Timer dinonaktifkan sesuai permintaan pengguna (bebas waktu tanpa batas / countdown mati)
   useEffect(() => {
-    if (step !== 'template' || session !== null || isStarting) {
-      setTemplateTimer(60);
-      return;
-    }
-
     if (!templateSelection && availableTemplates.length > 0) {
       setTemplateSelection(availableTemplates[0].id);
     }
-
-    const timer = setInterval(() => {
-      setTemplateTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          const chosenTemplate = templateSelectionRef.current || availableTemplates[0]?.id || 'y2k-dreamy';
-          handleStartSession(chosenTemplate);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [step, session, isStarting, availableTemplates]);
-
-  // 2. Payment method 60-second inactivity timer (returns to welcome)
-  useEffect(() => {
-    if (step !== 'payment' || session !== null) {
-      setPaymentTimer(60);
-      return;
-    }
-    const timer = setInterval(() => {
-      setPaymentTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setStep('welcome');
-          return 60;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [step, session]);
-
-  // 3. Cash verification 60-second timer (returns to payment)
-  useEffect(() => {
-    if (step !== 'cash_verification' || session !== null) {
-      setCashTimer(60);
-      return;
-    }
-    const timer = setInterval(() => {
-      setCashTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setStep('payment');
-          setAccessCode('');
-          return 60;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [step, session]);
-
-  // 4. QRIS 180-second validity countdown (returns to payment on timeout)
-  useEffect(() => {
-    if (step !== 'qris_payment' || paymentSuccess || session !== null) {
-      setQrisTimer(180);
-      return;
-    }
-    const timer = setInterval(() => {
-      setQrisTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setPaymentError('Waktu pembayaran QRIS telah habis. Silakan coba kembali.');
-          setTimeout(() => {
-            setStep('payment');
-            setPaymentData(null);
-            setPaymentError(null);
-          }, 3000);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [step, paymentSuccess, session]);
-
-  // 5. Result screen 90-second countdown (auto reset session)
-  useEffect(() => {
-    if (!session || session.status !== 'completed' || isCompletedDismissed) {
-      setResultTimer(90);
-      return;
-    }
-    const timer = setInterval(() => {
-      setResultTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          resetSelection();
-          return 90;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [session?.status, isCompletedDismissed]);
-
-  // Countdown timer for interactive filter selection step
-  useEffect(() => {
-    if (!isFilterSelecting) {
-      setFilterTimer(30);
-      return;
-    }
-    const timer = setInterval(() => {
-      setFilterTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          applyFilter(selectedFilter);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isFilterSelecting, selectedFilter, applyFilter]);
+  }, [availableTemplates, templateSelection]);
 
   const handleReapplyFilter = async (filterId: string) => {
     if (!session?.id) return;
@@ -702,7 +582,8 @@ export default function PhotoboothKiosk() {
 
   const handlePaymentSelect = (method: 'qris' | 'cash') => {
     if (method === 'cash') {
-      setStep('cash_verification');
+      // Hilangkan password cash: langsung masuk ke pemilihan template!
+      setStep('template');
     } else {
       startQrisPayment();
     }
@@ -710,32 +591,26 @@ export default function PhotoboothKiosk() {
 
   const handleCodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (accessCode.toUpperCase() === '12345') { // Hardcoded pin for panitia
-      setStep('template');
-      setAccessCode('');
-    } else {
-      alert('Kode Akses Salah!');
-      setAccessCode('');
-    }
+    setStep('template');
+    setAccessCode('');
   };
 
   const handleStartSession = (overrideTemplateId?: string) => {
     if (!socket || isStarting) return;
     const tpl = overrideTemplateId || templateSelectionRef.current || templateSelection || availableTemplates[0]?.id || 'y2k-dreamy';
     setIsStarting(true);
-    setStep('welcome'); // Exit 'template' step immediately so template countdown timer never runs in background
+    setStep('welcome'); // Exit 'template' step immediately
     socket.emit('session:start', { templateId: tpl });
-    // Reset starting state after a timeout in case of failure without error broadcast
     setTimeout(() => setIsStarting(false), 3000);
   };
 
   const handlePrintClick = () => {
-    if (!session || (printStatus !== 'IDLE' && printStatus !== 'FAILED')) return;
+    if (!session || printStatus === 'PENDING' || printStatus === 'PRINTING') return;
     setIsPrintModalOpen(true);
   };
 
   const startPrint = async (slotsArg?: string) => {
-    if (!session || (printStatus !== 'IDLE' && printStatus !== 'FAILED')) return;
+    if (!session || printStatus === 'PENDING' || printStatus === 'PRINTING') return;
     setIsPrintModalOpen(false);
     setPrintStatus('PENDING');
     try {
@@ -1015,11 +890,10 @@ export default function PhotoboothKiosk() {
                 </div>
               )}
 
-              {/* Timer & Tombol Aksi */}
-              <div className="flex items-center justify-between w-full mb-4 px-2">
-                <span className="text-yellow-300 font-bold text-sm md:text-base flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-ping" />
-                  Otomatis lanjut dalam {filterTimer} detik
+              {/* Tombol Aksi */}
+              <div className="flex items-center justify-between w-full mb-3 px-2">
+                <span className="text-white/80 font-medium text-xs md:text-sm">
+                  Pilih gaya warna foto favorit Anda:
                 </span>
                 <button
                   onClick={() => applyFilter('normal')}
@@ -1358,12 +1232,6 @@ export default function PhotoboothKiosk() {
       <main className="w-screen h-screen flex flex-col items-center justify-center overflow-hidden select-none relative font-sans">
         <Background />
         
-        {/* Top-Right Corner Timer */}
-        <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-40 flex items-center gap-2 bg-black/30 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-white/20 text-white shadow-lg text-sm sm:text-base font-semibold">
-          <Clock size={18} className="text-yellow-300 animate-pulse" />
-          <span>Sesi berakhir: <span className="text-yellow-300 font-mono font-bold">{resultTimer}s</span></span>
-        </div>
-        
         <div className="flex flex-col md:flex-row gap-6 md:gap-16 items-center justify-center w-full max-w-[95vw] h-full max-h-[88vh] z-10">
           
           {/* Photo Preview (2x6 proportion layout) */}
@@ -1412,31 +1280,44 @@ export default function PhotoboothKiosk() {
               </p>
             )}
 
-            {/* Tombol Cetak & Ganti Filter */}
-            <div className="flex flex-col sm:flex-row gap-3 md:gap-4 w-full mb-4 md:mb-6">
-              <button 
-                onClick={handlePrintClick}
-                disabled={printStatus !== 'IDLE' && printStatus !== 'FAILED'}
-                className={`flex-1 border-2 md:border-4 px-4 md:px-6 py-3 md:py-5 rounded-2xl md:rounded-3xl text-base md:text-2xl font-black shadow-xl transition-all transform ${
-                  printStatus === 'IDLE' || printStatus === 'FAILED'
-                    ? 'bg-gradient-to-b from-emerald-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 text-white border-emerald-300 hover:scale-105 active:scale-95'
-                    : 'bg-slate-500/50 text-white border-slate-400 cursor-not-allowed opacity-80'
-                }`}
-              >
-                {printStatus === 'IDLE' && '🖨️ CETAK FISIK'}
-                {printStatus === 'PENDING' && '⏳ MENUNGGU...'}
-                {printStatus === 'PRINTING' && '🖨️ MENCETAK...'}
-                {printStatus === 'COMPLETED' && '✅ BERHASIL'}
-                {printStatus === 'FAILED' && '❌ COBA LAGI'}
-              </button>
+            {/* Tombol Cetak, Download & Ganti Filter */}
+            <div className="flex flex-col gap-3 w-full mb-4 md:mb-6">
+              <div className="flex flex-col sm:flex-row gap-3 md:gap-4 w-full">
+                <button 
+                  onClick={handlePrintClick}
+                  disabled={printStatus === 'PENDING' || printStatus === 'PRINTING'}
+                  className={`flex-1 border-2 md:border-4 px-4 md:px-6 py-3 md:py-5 rounded-2xl md:rounded-3xl text-base md:text-2xl font-black shadow-xl transition-all transform ${
+                    printStatus === 'PENDING' || printStatus === 'PRINTING'
+                      ? 'bg-slate-500/50 text-white border-slate-400 cursor-not-allowed opacity-80'
+                      : 'bg-gradient-to-b from-emerald-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 text-white border-emerald-300 hover:scale-105 active:scale-95 cursor-pointer'
+                  }`}
+                >
+                  {printStatus === 'PENDING' && '⏳ MENUNGGU...'}
+                  {printStatus === 'PRINTING' && '🖨️ MENCETAK...'}
+                  {printStatus === 'COMPLETED' && '🖨️ CETAK LAGI'}
+                  {printStatus === 'FAILED' && '❌ COBA CETAK LAGI'}
+                  {printStatus === 'IDLE' && '🖨️ CETAK FISIK'}
+                </button>
+
+                <a 
+                  href={`/api/image/${session.id}/final?download=1`}
+                  download={`SI-FEST-2026-${session.id}.jpg`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-b from-blue-500 to-cyan-600 hover:from-blue-400 hover:to-cyan-500 text-white border-2 md:border-4 border-cyan-300 px-4 md:px-6 py-3 md:py-5 rounded-2xl md:rounded-3xl text-base md:text-2xl font-black shadow-xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer text-center"
+                >
+                  <Download size={26} />
+                  <span>UNDUH FOTO</span>
+                </a>
+              </div>
 
               <button 
                 onClick={() => setFilterModalOpen(true)}
                 disabled={isChangingFilter}
-                className="flex items-center justify-center gap-2 bg-gradient-to-b from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white border-2 md:border-4 border-purple-300 px-5 md:px-8 py-3 md:py-5 rounded-2xl md:rounded-3xl text-base md:text-2xl font-black shadow-xl transition-all transform hover:scale-105 active:scale-95"
+                className="w-full flex items-center justify-center gap-2 bg-gradient-to-b from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white border-2 md:border-4 border-purple-300 px-5 md:px-8 py-3 md:py-4 rounded-2xl md:rounded-3xl text-base md:text-xl font-black shadow-xl transition-all transform hover:scale-[1.02] active:scale-95 cursor-pointer"
               >
-                <Palette size={24} />
-                <span>{isChangingFilter ? 'MEMPROSES...' : 'GANTI FILTER'}</span>
+                <Palette size={22} />
+                <span>{isChangingFilter ? 'MEMPROSES...' : 'GANTI FILTER LAIN'}</span>
               </button>
             </div>
 
@@ -1462,23 +1343,23 @@ export default function PhotoboothKiosk() {
                   </div>
 
                   <p className="text-white/80 text-xs md:text-sm mb-4 text-center leading-relaxed">
-                    Kertas A4 muat <b className="text-yellow-300">6 strip foto</b> (3 kolom × 2 baris). Sentuh bagian kosong pada kertas Anda agar kertas foto dapat dihemat dan dipakai ulang!
+                    Kertas A4 muat <b className="text-yellow-300">8 strip foto</b> (4 atas × 4 bawah). Sentuh bagian kosong pada kertas Anda agar kertas foto dapat dihemat dan dipakai ulang!
                   </p>
 
-                  {/* Simulasi Kertas A4 Interaktif */}
+                  {/* Simulasi Kertas A4 Interaktif: 4 Atas & 4 Bawah */}
                   <div className="w-full bg-slate-100 text-slate-800 p-3 rounded-2xl shadow-inner border border-slate-300 mb-4">
                     <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 px-1">
-                      <span>📄 Kertas A4 Anda (3 Kolom × 2 Baris)</span>
+                      <span>📄 Kertas A4 (4 Atas × 4 Bawah = 8 Bagian)</span>
                       <span className="text-emerald-600 font-extrabold">
                         {isFullCenterPrint ? 'Mode 1 Strip Besar' : `${selectedPrintSlots.length} Bagian Dipilih`}
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 p-2 bg-white rounded-xl border-2 border-dashed border-slate-300">
-                      {[1, 2, 3, 4, 5, 6].map((slotNum) => {
+                    <div className="grid grid-cols-4 gap-2 p-2 bg-white rounded-xl border-2 border-dashed border-slate-300">
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map((slotNum) => {
                         const isSelected = selectedPrintSlots.includes(slotNum) && !isFullCenterPrint;
-                        const posText = slotNum <= 3 ? 'Baris Atas' : 'Baris Bawah';
-                        const colText = (slotNum - 1) % 3 === 0 ? 'Kiri' : (slotNum - 1) % 3 === 1 ? 'Tengah' : 'Kanan';
+                        const posText = slotNum <= 4 ? 'Atas' : 'Bawah';
+                        const colNum = ((slotNum - 1) % 4) + 1;
 
                         return (
                           <button
@@ -1495,7 +1376,7 @@ export default function PhotoboothKiosk() {
                                 }
                               });
                             }}
-                            className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all relative cursor-pointer min-h-[95px] ${
+                            className={`flex flex-col items-center justify-center p-2 rounded-xl border-2 transition-all relative cursor-pointer min-h-[90px] ${
                               isSelected
                                 ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 text-white border-emerald-400 shadow-lg scale-[1.03] ring-2 ring-emerald-300'
                                 : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/60'
@@ -1503,15 +1384,15 @@ export default function PhotoboothKiosk() {
                           >
                             {isSelected ? (
                               <>
-                                <CheckCircle2 size={24} className="text-white drop-shadow mb-1 animate-pulse" />
-                                <span className="text-xs font-black">Bagian {slotNum}</span>
-                                <span className="text-[10px] font-semibold opacity-90">CETAK</span>
+                                <CheckCircle2 size={20} className="text-white drop-shadow mb-1 animate-pulse" />
+                                <span className="text-xs font-black">Slot {slotNum}</span>
+                                <span className="text-[9px] font-semibold opacity-90">CETAK</span>
                               </>
                             ) : (
                               <>
-                                <span className="text-lg font-black text-slate-400 mb-0.5">#{slotNum}</span>
-                                <span className="text-[11px] font-bold text-slate-700">{colText}</span>
-                                <span className="text-[9px] text-slate-400">{posText}</span>
+                                <span className="text-base font-black text-slate-400 mb-0.5">#{slotNum}</span>
+                                <span className="text-[10px] font-bold text-slate-700">K{colNum}</span>
+                                <span className="text-[8px] text-slate-400">{posText}</span>
                               </>
                             )}
                           </button>
@@ -1616,7 +1497,7 @@ export default function PhotoboothKiosk() {
               onClick={resetSelection}
               className="w-full bg-sky-500 hover:bg-sky-400 text-white border-2 md:border-4 border-sky-300 px-8 md:px-16 py-3 md:py-6 rounded-full text-xl md:text-4xl font-black shadow-[0_10px_30px_rgba(14,165,233,0.5)] transition-all transform hover:scale-105 active:scale-95"
             >
-              SELESAI & KEMBALI ({resultTimer}s)
+              SELESAI & KEMBALI
             </button>
           </div>
 
@@ -1638,34 +1519,7 @@ export default function PhotoboothKiosk() {
         </div>
       )}
 
-      {/* Top-Right Corner Countdown Timers */}
-      {step === 'payment' && (
-        <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-40 flex items-center gap-2 bg-black/30 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-white/20 text-white shadow-lg text-sm sm:text-base font-semibold">
-          <Clock size={18} className="text-yellow-300 animate-pulse" />
-          <span>Kembali dalam <span className="text-yellow-300 font-mono font-bold">{paymentTimer}s</span></span>
-        </div>
-      )}
 
-      {step === 'qris_payment' && (
-        <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-40 flex items-center gap-2 bg-black/40 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-yellow-400/40 text-yellow-300 shadow-lg text-sm sm:text-base font-bold">
-          <Clock size={18} className="text-yellow-400 animate-pulse" />
-          <span>Sisa waktu: <span className="font-mono text-white font-black text-base sm:text-lg">{Math.floor(qrisTimer / 60)}:{(qrisTimer % 60).toString().padStart(2, '0')}</span></span>
-        </div>
-      )}
-
-      {step === 'cash_verification' && (
-        <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-40 flex items-center gap-2 bg-black/30 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-white/20 text-white shadow-lg text-sm sm:text-base font-semibold">
-          <Clock size={18} className="text-yellow-300 animate-pulse" />
-          <span>Waktu verifikasi: <span className="text-yellow-300 font-mono font-bold">{cashTimer}s</span></span>
-        </div>
-      )}
-
-      {step === 'template' && (
-        <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-40 flex items-center gap-2 bg-black/30 backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-full border border-white/20 text-white shadow-lg text-sm sm:text-base font-bold">
-          <Clock size={18} className="text-yellow-400 animate-pulse" />
-          <span>Mulai otomatis: <span className="text-yellow-300 font-mono font-black">{templateTimer}s</span></span>
-        </div>
-      )}
 
       {sessionError && !session && (
         <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-red-600/90 backdrop-blur-sm text-white px-6 py-3 rounded-full font-bold text-base md:text-xl shadow-lg border-2 border-red-400 z-50 flex items-center gap-3 max-w-[90vw] text-center">
@@ -1884,31 +1738,18 @@ export default function PhotoboothKiosk() {
             transition={{ delay: 0.1 }}
             className="bg-white/10 backdrop-blur-md border border-white/30 p-10 rounded-3xl mb-12 max-w-2xl"
           >
-            <p className="text-3xl text-white font-bold leading-relaxed mb-8">
+            <p className="text-3xl text-white font-bold leading-relaxed mb-6">
               Silahkan bayar ke panitia sebesar <span className="text-yellow-400 text-4xl">Rp 1</span>
             </p>
-            <p className="text-xl text-white/80 mb-8">
-              Panitia akan memasukkan kode akses di bawah ini untuk melanjutkan:
-            </p>
 
-            <form onSubmit={handleCodeSubmit} className="flex flex-col gap-6 items-center">
-              <input 
-                type="password" 
-                value={accessCode}
-                onChange={(e) => setAccessCode(e.target.value)}
-                placeholder="Kode Panitia"
-                className="w-full bg-white/20 border-2 border-white/50 rounded-2xl px-8 py-6 text-center text-4xl text-white placeholder-white/50 focus:outline-none focus:border-yellow-400 focus:bg-white/30 transition-all"
-                autoFocus
-              />
-              <motion.button 
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                type="submit"
-                className="w-full bg-yellow-400 hover:bg-yellow-300 text-blue-900 border-2 border-yellow-200 px-12 py-6 rounded-2xl text-2xl font-black transition-all shadow-[0_0_30px_rgba(250,204,21,0.5)]"
-              >
-                VERIFIKASI
-              </motion.button>
-            </form>
+            <motion.button 
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setStep('template')}
+              className="w-full bg-yellow-400 hover:bg-yellow-300 text-blue-900 border-2 border-yellow-200 px-12 py-6 rounded-2xl text-2xl font-black transition-all shadow-[0_0_30px_rgba(250,204,21,0.5)] cursor-pointer"
+            >
+              LANJUTKAN KE PILIH TEMPLATE ➔
+            </motion.button>
           </motion.div>
 
 
@@ -1967,7 +1808,7 @@ export default function PhotoboothKiosk() {
                   : 'bg-white/10 text-white/50 border-white/20 cursor-not-allowed'
               }`}
             >
-              {isStarting ? 'MEMULAI...' : isConnected ? `LANJUTKAN (${templateTimer}s)` : 'MENYAMBUNG...'}
+              {isStarting ? 'MEMULAI...' : isConnected ? 'LANJUTKAN ➔' : 'MENYAMBUNG...'}
             </motion.button>
           </div>
         </div>

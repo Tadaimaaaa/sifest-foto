@@ -88,16 +88,17 @@ $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0,
 $doc.OriginAtMargins = $true
 
 # Parse daftar slot yang dipilih (contoh: "1", "2", "1,2", "center")
+# Layout 8 Bagian: 4 Atas (Slot 1, 2, 3, 4) & 4 Bawah (Slot 5, 6, 7, 8)
 $slotList = @()
 if ($Slots -eq "center" -or $Slots -eq "full") {
     $slotList = @("center")
 } elseif ($Slots -eq "all") {
-    $slotList = @(1, 2, 3, 4, 5, 6)
+    $slotList = @(1, 2, 3, 4, 5, 6, 7, 8)
 } else {
     $rawParts = $Slots.Split(",")
     foreach ($p in $rawParts) {
         $num = 0
-        if ([int]::TryParse($p.Trim(), [ref]$num) -and $num -ge 1 -and $num -le 6) {
+        if ([int]::TryParse($p.Trim(), [ref]$num) -and $num -ge 1 -and $num -le 8) {
             $slotList += $num
         }
     }
@@ -138,10 +139,10 @@ $doc.add_PrintPage({
 
         $ev.Graphics.DrawImage($image, $posX, $posY, $drawWidth, $drawHeight)
     } else {
-        # Grid 6 Slot pada Kertas A4 (3 Kolom x 2 Baris)
-        # Baris 1 (Atas): Slot 1 (Kiri), Slot 2 (Tengah), Slot 3 (Kanan)
-        # Baris 2 (Bawah): Slot 4 (Kiri), Slot 5 (Tengah), Slot 6 (Kanan)
-        $cols = 3
+        # Grid 8 Slot pada Kertas A4 (4 Kolom x 2 Baris)
+        # Baris 1 (Atas): Slot 1, Slot 2, Slot 3, Slot 4
+        # Baris 2 (Bawah): Slot 5, Slot 6, Slot 7, Slot 8
+        $cols = 4
         $rows = 2
         $slotW = $bounds.Width / $cols
         $slotH = $bounds.Height / $rows
@@ -153,9 +154,9 @@ $doc.add_PrintPage({
             $slotX = $bounds.X + ($col * $slotW)
             $slotY = $bounds.Y + ($row * $slotH)
 
-            # Padding dalam batas slot agar tidak mepet batas potong
-            $padX = 10
-            $padY = 15
+            # Padding dalam batas slot agar pas dan rapi
+            $padX = 6
+            $padY = 10
             $availW = $slotW - ($padX * 2)
             $availH = $slotH - ($padY * 2)
 

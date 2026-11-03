@@ -290,22 +290,14 @@ export class SessionManager {
           | { action: 'filter'; filterId: string }
           | { action: 'retake'; photoIndex: number };
 
-        let filterTimer: NodeJS.Timeout | null = null;
-
+        // Menunggu pilihan filter dari pengguna (tanpa batas timer / timeout otomatis)
         const choice = await new Promise<FilterOrRetakeAction>((resolve) => {
           this.filterOrRetakeResolver = resolve;
-          // Auto-advance with 'normal' if user doesn't pick in 35 seconds
-          filterTimer = setTimeout(() => {
-            console.log(`[Session] Filter selection timed out after 35s, defaulting to normal`);
-            resolve({ action: 'filter', filterId: 'normal' });
-          }, 35000);
           signal.addEventListener('abort', () => {
-            if (filterTimer) clearTimeout(filterTimer);
             resolve({ action: 'filter', filterId: 'normal' });
           });
         });
 
-        if (filterTimer) clearTimeout(filterTimer);
         this.filterOrRetakeResolver = null;
 
         if (choice.action === 'retake') {
@@ -404,11 +396,8 @@ export class SessionManager {
 
       if (this.autoResetTimeout) {
         clearTimeout(this.autoResetTimeout);
+        this.autoResetTimeout = null;
       }
-      this.autoResetTimeout = setTimeout(() => {
-        console.log(`[Session] Completed session timed out after 120s, resetting automatically`);
-        this.reset();
-      }, 120000);
 
     } catch (error: any) {
       if (error.message !== 'ABORTED') {
