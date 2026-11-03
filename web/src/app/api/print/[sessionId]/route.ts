@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { printQueue } from '@/lib/print-queue';
 import { getSessionManager } from '@/lib/get-session-manager';
+import path from 'path';
+import fs from 'fs';
 
 export async function POST(
   req: NextRequest,
@@ -13,16 +15,18 @@ export async function POST(
     return new NextResponse('Invalid Session ID', { status: 400 });
   }
 
+  // Cek apakah file foto hasil akhir sudah tersimpan di storage
+  const storagePath = process.env.STORAGE_PATH || '../storage';
+  const absoluteStoragePath = path.resolve(process.cwd(), storagePath);
+  const finalPath = path.join(absoluteStoragePath, 'sessions', sessionId, 'final', 'photobooth-final.jpg');
+  const fileExists = fs.existsSync(finalPath);
+
   const sm = getSessionManager();
   const session = sm.getActiveSession();
 
-  // Validate that the request matches the current active session
-  if (!session || session.id !== sessionId) {
-    return new NextResponse('Session not found or not active', { status: 404 });
-  }
-
-  if (session.status !== 'completed') {
-    return new NextResponse('Session is not completed yet', { status: 400 });
+  // Izinkan cetak jika file foto sudah ada di disk ATAU sesi aktif berstatus completed
+  if (!fileExists && (!session || session.status !== 'completed')) {
+    return new NextResponse('Foto belum selesai diproses atau tidak ditemukan', { status: 400 });
   }
 
   let slots = '1';

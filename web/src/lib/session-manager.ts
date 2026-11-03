@@ -222,9 +222,9 @@ export class SessionManager {
   }
 
   private async runCountdown(photoIndex: number, signal: AbortSignal) {
-    this.broadcast('countdown:start', { photoIndex, duration: 5, remaining: 5 });
+    this.broadcast('countdown:start', { photoIndex, duration: 10, remaining: 10 });
     
-    for (let i = 5; i >= 1; i--) {
+    for (let i = 10; i >= 1; i--) {
       if (signal.aborted) throw new Error('ABORTED');
       this.broadcast('countdown:tick', { photoIndex, remaining: i });
       await this.sleep(1000, signal);
@@ -316,9 +316,9 @@ export class SessionManager {
           this.state = `PHOTO_${k}_COUNTDOWN` as SessionState;
           console.log(`[Session] Retake: Photo ${k} countdown started`);
           cameraClient.prepareCapture().catch(() => {});
-          this.broadcast('countdown:start', { photoIndex: k, duration: 5, remaining: 5, isRetake: true });
+          this.broadcast('countdown:start', { photoIndex: k, duration: 10, remaining: 10, isRetake: true });
 
-          for (let s = 5; s >= 1; s--) {
+          for (let s = 10; s >= 1; s--) {
             if (signal.aborted) throw new Error('ABORTED');
             this.broadcast('countdown:tick', { photoIndex: k, remaining: s, isRetake: true });
             await this.sleep(1000, signal);
