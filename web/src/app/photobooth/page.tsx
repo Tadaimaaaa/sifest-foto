@@ -100,8 +100,8 @@ const WebcamMirror = ({ isCapturing }: { isCapturing?: boolean }) => {
       try {
         const constraints: MediaStreamConstraints = {
           video: selectedDeviceId
-            ? { deviceId: { exact: selectedDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-            : { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'user' }
+            ? { deviceId: { exact: selectedDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }
+            : { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'user', frameRate: { ideal: 30 } }
         };
 
         stream = await navigator.mediaDevices.getUserMedia(constraints);

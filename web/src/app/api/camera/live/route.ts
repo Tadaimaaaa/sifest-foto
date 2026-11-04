@@ -125,8 +125,8 @@ export async function GET(req: NextRequest) {
                 Buffer.from('\r\n')
               ])
             );
-            // ~25 FPS interval (40ms) — tampilan mulus, stabil tanpa lag
-            await new Promise((r) => setTimeout(r, 40));
+            // 30 FPS interval (~33ms) — standar broadcast & live view optimal DSLR
+            await new Promise((r) => setTimeout(r, 33));
           } else {
             consecutiveMisses++;
             // JANGAN panggil wakeUpLiveView di sini karena frame kosong wajar terjadi saat shutter jepret foto!
