@@ -347,7 +347,10 @@ const TemplateCard = ({
 };
 
 const DEFAULT_TEMPLATES = [
-  { id: 'si-fest', name: 'SI FEST', icon: '✨', file: '/templates/si-fest.png?v=2' },
+  { id: 'sifest-starry', name: 'Starry Mascot', icon: '⭐', file: '/templates/sifest-starry.png?v=2' },
+  { id: 'sifest-wave', name: 'Blue Wave', icon: '🔥', file: '/templates/sifest-wave.png?v=2' },
+  { id: 'sifest-ocean', name: 'Ocean Yellow', icon: '🐬', file: '/templates/sifest-ocean.png?v=2' },
+  { id: 'sifest-denim', name: 'Denim Googly', icon: '👀', file: '/templates/sifest-denim.png?v=2' },
   { id: 'teddy-star', name: 'Teddy Star', icon: '🧸', file: '/templates/teddy-star.png?v=2' },
   { id: 'sifest-mascot', name: 'SI FEST Mascot', icon: '🤖', file: '/templates/sifest-mascot.png?v=2' },
   { id: 'playful-yellow', name: 'Playful Yellow', icon: '🎮', file: '/templates/playful-yellow.png?v=2' },
@@ -481,6 +484,42 @@ export default function PhotoboothKiosk() {
     const activeTpl = availableTemplates.find(t => t.id === tplId);
     if (activeTpl?.holes && activeTpl.holes.length === 3) {
       return activeTpl.holes;
+    }
+
+    // Starry Mascot (sifest-starry)
+    if (tplId.includes('starry')) {
+      return [
+        { top: '8.89%', left: '14.83%', width: '70.0%', height: '26.22%' },
+        { top: '38.42%', left: '7.92%', width: '83.92%', height: '18.83%' },
+        { top: '59.86%', left: '10.42%', width: '78.92%', height: '27.72%' },
+      ];
+    }
+
+    // Blue Wave Flame (sifest-wave)
+    if (tplId.includes('wave')) {
+      return [
+        { top: '12.06%', left: '8.33%', width: '83.58%', height: '16.47%' },
+        { top: '30.11%', left: '8.25%', width: '83.58%', height: '16.44%' },
+        { top: '48.61%', left: '8.25%', width: '83.83%', height: '16.33%' },
+      ];
+    }
+
+    // Ocean Yellow (sifest-ocean)
+    if (tplId.includes('ocean')) {
+      return [
+        { top: '6.11%', left: '4.75%', width: '88.75%', height: '22.11%' },
+        { top: '31.56%', left: '6.33%', width: '87.92%', height: '19.53%' },
+        { top: '53.92%', left: '6.58%', width: '87.0%', height: '23.33%' },
+      ];
+    }
+
+    // Denim Googly (sifest-denim)
+    if (tplId.includes('denim')) {
+      return [
+        { top: '9.72%', left: '9.92%', width: '83.08%', height: '18.67%' },
+        { top: '31.75%', left: '10.0%', width: '82.75%', height: '18.36%' },
+        { top: '53.44%', left: '9.83%', width: '83.0%', height: '18.44%' },
+      ];
     }
 
     // Top-Title Layout: sifest-mascot, classic, y2k-dreamy (Judul di atas, 3 foto di bawah)

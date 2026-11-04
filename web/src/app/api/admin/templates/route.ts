@@ -12,7 +12,10 @@ interface TemplateItem {
 }
 
 const DEFAULT_TEMPLATES: TemplateItem[] = [
-  { id: 'si-fest', name: 'SI FEST', icon: '✨', isBuiltin: false },
+  { id: 'sifest-starry', name: 'Starry Mascot', icon: '⭐', isBuiltin: false },
+  { id: 'sifest-wave', name: 'Blue Wave', icon: '🔥', isBuiltin: false },
+  { id: 'sifest-ocean', name: 'Ocean Yellow', icon: '🐬', isBuiltin: false },
+  { id: 'sifest-denim', name: 'Denim Googly', icon: '👀', isBuiltin: false },
   { id: 'teddy-star', name: 'Teddy Star', icon: '🧸', isBuiltin: false },
   { id: 'sifest-mascot', name: 'SI FEST Mascot', icon: '🤖', isBuiltin: false },
   { id: 'playful-yellow', name: 'Playful Yellow', icon: '🎮', isBuiltin: false },

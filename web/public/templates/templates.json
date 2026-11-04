@@ -1,8 +1,26 @@
 [
   {
-    "id": "si-fest",
-    "name": "SI FEST",
-    "icon": "✨",
+    "id": "sifest-starry",
+    "name": "Starry Mascot",
+    "icon": "⭐",
+    "isBuiltin": false
+  },
+  {
+    "id": "sifest-wave",
+    "name": "Blue Wave",
+    "icon": "🔥",
+    "isBuiltin": false
+  },
+  {
+    "id": "sifest-ocean",
+    "name": "Ocean Yellow",
+    "icon": "🐬",
+    "isBuiltin": false
+  },
+  {
+    "id": "sifest-denim",
+    "name": "Denim Googly",
+    "icon": "👀",
     "isBuiltin": false
   },
   {
