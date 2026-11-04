@@ -52,6 +52,7 @@ export interface PhotoboothSession {
 type EventCallback = (event: string, payload?: any) => void;
 
 export class SessionManager {
+  public isCapturingPhoto: boolean = false;
   private activeSession: PhotoboothSession | null = null;
   private state: SessionState = 'IDLE';
   private broadcast: EventCallback;
@@ -254,12 +255,19 @@ export class SessionManager {
 
         // Capture
         this.state = `PHOTO_${i}_CAPTURE` as SessionState;
+        this.isCapturingPhoto = true;
         this.broadcast('countdown:capture', { photoIndex: i });
         console.log(`[Session] Photo ${i} captured trigger`);
 
-        const result = await cameraClient.capture(session.id, i);
-        if (!result.success) {
-          throw new Error((result as any).error || 'CAPTURE_FAILED');
+        let result: any = null;
+        try {
+          result = await cameraClient.capture(session.id, i);
+        } finally {
+          this.isCapturingPhoto = false;
+        }
+
+        if (!result || !result.success) {
+          throw new Error((result as any)?.error || 'CAPTURE_FAILED');
         }
 
         const photoUrl = `/api/image/${session.id}/photo-${i}?t=${Date.now()}`;
@@ -333,12 +341,19 @@ export class SessionManager {
 
           // Capture
           this.state = `PHOTO_${k}_CAPTURE` as SessionState;
+          this.isCapturingPhoto = true;
           this.broadcast('countdown:capture', { photoIndex: k, isRetake: true });
           console.log(`[Session] Retake: Photo ${k} captured trigger`);
 
-          const captureResult = await cameraClient.capture(session.id, k);
-          if (!captureResult.success) {
-            throw new Error((captureResult as any).error || 'CAPTURE_FAILED');
+          let captureResult: any = null;
+          try {
+            captureResult = await cameraClient.capture(session.id, k);
+          } finally {
+            this.isCapturingPhoto = false;
+          }
+
+          if (!captureResult || !captureResult.success) {
+            throw new Error((captureResult as any)?.error || 'CAPTURE_FAILED');
           }
 
           const photoUrl = `/api/image/${session.id}/photo-${k}?t=${Date.now()}`;

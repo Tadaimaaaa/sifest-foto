@@ -228,29 +228,47 @@ class RealCameraAdapter {
             const initialBaselineHead = this.baselineHead;
             const initialBaselineFilename = this.baselineFilename;
             console.log(`[RealCameraAdapter] Triggering capture for ${fileName} INSTANTLY... (prior baseline: ${initialBaselineFilename || initialBaselineLen})`);
-            // 1. TRIGGER CEKREK SEKETIKA pada milidetik 0!
+            // 1. Matikan LiveView terlebih dahulu agar cermin kamera turun dan jalur USB Canon 100% bebas!
+            try {
+                const stopReq = http.get('http://127.0.0.1:5513/?CMD=LiveView_Stop', (res) => res.resume());
+                stopReq.on('error', () => { });
+            }
+            catch { }
+            await new Promise((r) => setTimeout(r, 150));
+            // 2. TRIGGER SHUTTER!
+            // Kirim Capture_NoAf (bebas dari hunting fokus) dan Capture secara simultan
             triggerCapture(1).catch(() => { });
-            // 2. Polling sampai foto BARU selesai ditransfer dengan Smart Re-Trigger
+            try {
+                const noAfReq = http.get('http://127.0.0.1:5513/?CMD=Capture_NoAf', (res) => res.resume());
+                noAfReq.on('error', () => { });
+            }
+            catch { }
+            // 3. Polling sampai foto BARU selesai ditransfer dengan Smart Re-Trigger
             let imageBuffer = null;
             let newFilename = null;
             const pollStart = Date.now();
             let retriggered2 = false;
             let retriggered3 = false;
-            while (Date.now() - pollStart < 11000) {
+            while (Date.now() - pollStart < 8500) {
                 const elapsed = Date.now() - pollStart;
-                // Smart Re-trigger 2 di detik 3.2 jika belum ada foto baru
-                if (elapsed > 3200 && !retriggered2) {
+                // Smart Re-trigger 2 di detik 2.5 jika belum ada foto baru
+                if (elapsed > 2500 && !retriggered2) {
                     retriggered2 = true;
-                    console.warn(`[RealCameraAdapter] ⚠️ Belum ada foto baru setelah 3.2 detik. Mengirim ulang trigger shutter (#2)...`);
+                    console.warn(`[RealCameraAdapter] ⚠️ Belum ada foto baru setelah 2.5 detik. Mengirim ulang trigger shutter (#2)...`);
                     triggerCapture(2).catch(() => { });
+                    try {
+                        const noAf = http.get('http://127.0.0.1:5513/?CMD=Capture_NoAf', (res) => res.resume());
+                        noAf.on('error', () => { });
+                    }
+                    catch { }
                 }
-                // Smart Re-trigger 3 di detik 6.2 jika masih belum ada foto baru
-                if (elapsed > 6200 && !retriggered3) {
+                // Smart Re-trigger 3 di detik 5.0 jika masih belum ada foto baru
+                if (elapsed > 5000 && !retriggered3) {
                     retriggered3 = true;
-                    console.warn(`[RealCameraAdapter] ⚠️ Belum ada foto baru setelah 6.2 detik. Mengirim ulang trigger shutter (#3)...`);
+                    console.warn(`[RealCameraAdapter] ⚠️ Belum ada foto baru setelah 5.0 detik. Mengirim ulang trigger shutter (#3)...`);
                     triggerCapture(3).catch(() => { });
                 }
-                const current = await httpGetDetails('http://127.0.0.1:5513/preview.jpg', 1500);
+                const current = await httpGetDetails('http://127.0.0.1:5513/preview.jpg', 1200);
                 if (current &&
                     current.length > 10000 &&
                     current.buffer[0] === 0xFF &&
@@ -270,7 +288,7 @@ class RealCameraAdapter {
                     }
                     // Metode 3: Jika belum pernah ada foto sama sekali di digiCamControl
                     else if (!initialBaselineFilename && initialBaselineLen === 0) {
-                        if (elapsed > 2000) {
+                        if (elapsed > 1800) {
                             isNewPhoto = true;
                         }
                     }
@@ -284,21 +302,34 @@ class RealCameraAdapter {
                         break;
                     }
                 }
-                await new Promise((r) => setTimeout(r, 200));
+                await new Promise((r) => setTimeout(r, 150));
             }
             // FAILSAFE: Jika shutter fisik kamera DSLR macet (misal lensa AF gagal mengunci fokus di tempat gelap),
-            // gunakan snapshot LiveView kamera DSLR sebagai penyelamat agar photobooth TIDAK PERNAH CRASH!
+            // gunakan snapshot LiveView / preview kamera DSLR sebagai penyelamat agar photobooth TIDAK PERNAH CRASH!
             if (!imageBuffer || imageBuffer.length < 5000) {
-                console.warn(`[RealCameraAdapter] ⚠️ Shutter DSLR tidak merespons foto baru (kemungkinan AF lock / bus busy). Mengambil frame LiveView DSLR sebagai failsafe...`);
+                console.warn(`[RealCameraAdapter] ⚠️ Shutter DSLR fisik macet setelah 8.5s. Mengaktifkan LiveView darurat untuk snapshot failsafe...`);
+                try {
+                    http.get('http://127.0.0.1:5513/?CMD=LiveView_Start', (res) => res.resume()).on('error', () => { });
+                }
+                catch { }
+                await new Promise(r => setTimeout(r, 500));
                 const liveFrame = await fetchLiveViewSnapshot();
                 if (liveFrame && liveFrame.length > 5000) {
                     imageBuffer = liveFrame;
                     newFilename = 'liveview-failsafe.jpg';
-                    console.log(`[RealCameraAdapter] ✅ Berhasil menyelamatkan pose menggunakan snapshot LiveView DSLR (${liveFrame.length} bytes). Photobooth aman lanjut!`);
+                    console.log(`[RealCameraAdapter] ✅ Berhasil menyelamatkan pose menggunakan snapshot LiveView DSLR (${liveFrame.length} bytes). Sesi Kiosk tetap sukses!`);
                 }
                 else {
-                    throw new Error('CAMERA_SHUTTER_FAILED: Kamera DSLR tidak merespons jepretan foto baru dan LiveView offline.');
+                    const lastCurrent = await httpGetDetails('http://127.0.0.1:5513/preview.jpg', 1500);
+                    if (lastCurrent && lastCurrent.length > 5000) {
+                        imageBuffer = lastCurrent.buffer;
+                        newFilename = 'last-preview-fallback.jpg';
+                        console.log(`[RealCameraAdapter] ✅ Berhasil menggunakan preview terakhir sebagai fallback.`);
+                    }
                 }
+            }
+            if (!imageBuffer || imageBuffer.length < 5000) {
+                throw new Error('CAMERA_SHUTTER_FAILED: Kamera DSLR tidak merespons jepretan foto baru dan LiveView offline.');
             }
             // 4. Simpan foto asli baru ke storage sesi
             await fs.writeFile(filePath, imageBuffer);

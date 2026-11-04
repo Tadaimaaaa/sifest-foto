@@ -105,6 +105,14 @@ export async function GET(req: NextRequest) {
       let consecutiveMisses = 0;
 
       while (!isClosed && !currentAbort.signal.aborted && !req.signal.aborted) {
+        // Jika sedang proses jepret shutter DSLR, jeda penarikan frame liveview
+        // agar jalur USB dan port 5513 100% bebas untuk perintah Capture!
+        const globalSm = (global as any).sessionManager;
+        if (globalSm && globalSm.isCapturingPhoto) {
+          await new Promise((r) => setTimeout(r, 120));
+          continue;
+        }
+
         try {
           const frame = await getLiveFrame(500);
           if (frame && frame.length > 500) {
