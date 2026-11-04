@@ -22,5 +22,11 @@
     "name": "Fun",
     "icon": "🎈",
     "isBuiltin": true
+  },
+  {
+    "id": "si-fest",
+    "name": "SI FEST",
+    "icon": "✨",
+    "isBuiltin": false
   }
 ]

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
+import { autoStandardizeAndPunchTemplate } from '@/lib/template-processor';
 
 interface TemplateItem {
   id: string;
@@ -104,6 +105,33 @@ export async function POST(req: NextRequest) {
 
     const currentList = await getTemplatesList();
 
+    // Case 0: Action 'punch' - Melubangi template yang sudah ada secara otomatis ke ukuran standar
+    if (action === 'punch' && templateId) {
+      const pngPath = path.join(templatesDir, `${templateId}.png`);
+      const jpgPath = path.join(templatesDir, `${templateId}.jpg`);
+
+      let srcPath = pngPath;
+      try {
+        await fs.access(pngPath);
+      } catch {
+        srcPath = jpgPath;
+        await fs.access(jpgPath);
+      }
+
+      await autoStandardizeAndPunchTemplate(srcPath, pngPath, { forcePunch: true });
+
+      // Hapus file jpg lama jika ada agar bersih
+      try {
+        if (srcPath === jpgPath) await fs.unlink(jpgPath);
+      } catch {}
+
+      return NextResponse.json({
+        success: true,
+        message: `Template "${templateId}" berhasil distandarkan ke 1200x3600 dan 3 lubang foto berhasil dilubangi transparan!`,
+        url: `/templates/${templateId}.png?t=${Date.now()}`,
+      });
+    }
+
     // Case 1: Tambah Template Baru (action === 'create' atau tidak ada templateId tapi ada name & file)
     if (action === 'create' || (!templateId && name)) {
       if (!name) {
@@ -127,13 +155,11 @@ export async function POST(req: NextRequest) {
         counter++;
       }
 
-      const originalName = file.name.toLowerCase();
-      const isJpg = originalName.endsWith('.jpg') || originalName.endsWith('.jpeg');
-      const ext = isJpg ? 'jpg' : 'png';
-      const filePath = path.join(templatesDir, `${uniqueSlug}.${ext}`);
-
+      // Selalu simpan sebagai format PNG standar 1200x3600 Ultra-HD dengan 3 lubang transparan
+      const targetPngPath = path.join(templatesDir, `${uniqueSlug}.png`);
       const bytes = await file.arrayBuffer();
-      await fs.writeFile(filePath, Buffer.from(bytes));
+
+      await autoStandardizeAndPunchTemplate(Buffer.from(bytes), targetPngPath, { forcePunch: true });
 
       const newTemplate: TemplateItem = {
         id: uniqueSlug,
@@ -147,11 +173,11 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: `Template "${name}" berhasil ditambahkan dan langsung aktif!`,
+        message: `Template "${name}" berhasil diunggah, otomatis diubah ke 1200x3600, dan 3 lubang foto langsung transparan!`,
         template: {
           ...newTemplate,
           hasCustom: true,
-          url: `/templates/${uniqueSlug}.${ext}?t=${Date.now()}`,
+          url: `/templates/${uniqueSlug}.png?t=${Date.now()}`,
         },
       });
     }
@@ -161,19 +187,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'templateId dan file wajib diisi' }, { status: 400 });
     }
 
-    const originalName = file.name.toLowerCase();
-    const isJpg = originalName.endsWith('.jpg') || originalName.endsWith('.jpeg');
-    const ext = isJpg ? 'jpg' : 'png';
-    const filePath = path.join(templatesDir, `${templateId}.${ext}`);
-
-    // If uploading png, clean up old jpg if any (and vice versa)
-    const altExt = isJpg ? 'png' : 'jpg';
-    try {
-      await fs.unlink(path.join(templatesDir, `${templateId}.${altExt}`));
-    } catch {}
+    const targetPngPath = path.join(templatesDir, `${templateId}.png`);
+    const oldJpgPath = path.join(templatesDir, `${templateId}.jpg`);
 
     const bytes = await file.arrayBuffer();
-    await fs.writeFile(filePath, Buffer.from(bytes));
+    // Otomatis standarisasi ke 1200x3600 & lubangi 3 frame foto transparan
+    await autoStandardizeAndPunchTemplate(Buffer.from(bytes), targetPngPath, { forcePunch: true });
+
+    // Hapus file jpg lama jika ada
+    try {
+      await fs.unlink(oldJpgPath);
+    } catch {}
 
     // Update name / icon in templates.json if provided
     let listChanged = false;
@@ -195,8 +219,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Desain template "${templateId}" berhasil diperbarui!`,
-      url: `/templates/${templateId}.${ext}?t=${Date.now()}`,
+      message: `Desain template "${templateId}" berhasil diperbarui, ukuran disesuaikan ke 1200x3600, dan 3 lubang foto langsung bolong!`,
+      url: `/templates/${templateId}.png?t=${Date.now()}`,
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

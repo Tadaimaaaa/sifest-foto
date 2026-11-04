@@ -198,76 +198,74 @@ export async function processSession(options: CompositorOptions): Promise<void> 
 
     if (customTemplatePath) {
       console.log(`[Compositor] Using custom template file: ${customTemplatePath}`);
-      const isPng = customTemplatePath.toLowerCase().endsWith('.png');
 
-      let templateBuffer: Buffer;
-      const meta = await sharp(customTemplatePath).metadata();
+      // Standarisasi ukuran template ke TEMPLATE_WIDTH x TEMPLATE_HEIGHT (1200 x 3600)
+      const resizedTemplate = await sharp(customTemplatePath)
+        .resize(TEMPLATE_WIDTH, TEMPLATE_HEIGHT, { fit: 'fill' })
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
 
-      if (isPng && !meta.hasAlpha) {
-        // Auto-punch the 3 boxes if uploaded without transparency from Canva
-        console.log('[Compositor] Auto-punching transparent holes for opaque Canva template...');
+      const d = resizedTemplate.data;
+
+      // Cek apakah 3 titik tengah foto masih tertutup (opaque)
+      const samplePoints = [
+        { x: pX + Math.floor(pWidth / 2), y: p1Y + Math.floor(pHeight / 2) },
+        { x: pX + Math.floor(pWidth / 2), y: p2Y + Math.floor(pHeight / 2) },
+        { x: pX + Math.floor(pWidth / 2), y: p3Y + Math.floor(pHeight / 2) },
+      ];
+
+      let needsPunch = false;
+      for (const pt of samplePoints) {
+        const idx = (pt.y * TEMPLATE_WIDTH + pt.x) * 4;
+        if (d[idx + 3] > 80) {
+          needsPunch = true;
+          break;
+        }
+      }
+
+      if (needsPunch) {
+        console.log('[Compositor] Auto-punching 3 transparent holes for opaque/Canva template...');
         const maskSvg = Buffer.from(`
           <svg width="${TEMPLATE_WIDTH}" height="${TEMPLATE_HEIGHT}">
             <rect width="100%" height="100%" fill="white" />
-            <rect x="${pX}" y="${p1Y}" width="${pWidth}" height="${pHeight}" rx="48" ry="48" fill="black" />
-            <rect x="${pX}" y="${p2Y}" width="${pWidth}" height="${pHeight}" rx="48" ry="48" fill="black" />
-            <rect x="${pX}" y="${p3Y}" width="${pWidth}" height="${pHeight}" rx="48" ry="48" fill="black" />
+            <rect x="${pX}" y="${p1Y}" width="${pWidth}" height="${pHeight}" rx="28" ry="28" fill="black" />
+            <rect x="${pX}" y="${p2Y}" width="${pWidth}" height="${pHeight}" rx="28" ry="28" fill="black" />
+            <rect x="${pX}" y="${p3Y}" width="${pWidth}" height="${pHeight}" rx="28" ry="28" fill="black" />
           </svg>
         `);
         const maskRaw = await sharp(maskSvg).raw().toBuffer({ resolveWithObject: true });
-        const imgWithAlpha = await sharp(customTemplatePath)
-          .resize(TEMPLATE_WIDTH, TEMPLATE_HEIGHT)
-          .ensureAlpha()
-          .raw()
-          .toBuffer({ resolveWithObject: true });
-
-        const d = imgWithAlpha.data;
         const md = maskRaw.data;
         for (let i = 0; i < TEMPLATE_WIDTH * TEMPLATE_HEIGHT; i++) {
           if (md[i * maskRaw.info.channels] < 128) {
-            d[i * 4 + 3] = 0; // Transparent hole
+            d[i * 4 + 3] = 0; // Transparan sempurna
           }
         }
-        templateBuffer = await sharp(d, {
-          raw: { width: TEMPLATE_WIDTH, height: TEMPLATE_HEIGHT, channels: 4 }
-        }).png().toBuffer();
-      } else {
-        templateBuffer = await sharp(customTemplatePath)
-          .resize(TEMPLATE_WIDTH, TEMPLATE_HEIGHT)
-          .toBuffer();
       }
 
-      if (isPng) {
-        // Transparent frame overlay: photos placed underneath, custom PNG overlay on top
-        const baseCanvas = await sharp({
-          create: {
-            width: TEMPLATE_WIDTH,
-            height: TEMPLATE_HEIGHT,
-            channels: 4,
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-          }
-        }).png().toBuffer();
+      const templateBuffer = await sharp(d, {
+        raw: { width: TEMPLATE_WIDTH, height: TEMPLATE_HEIGHT, channels: 4 }
+      }).png().toBuffer();
 
-        await sharp(baseCanvas)
-          .composite([
-            { input: img1, left: pX, top: p1Y },
-            { input: img2, left: pX, top: p2Y },
-            { input: img3, left: pX, top: p3Y },
-            { input: templateBuffer, left: 0, top: 0 }
-          ])
-          .jpeg({ quality: 98, chromaSubsampling: '4:4:4' })
-          .toFile(tempFinalPath);
-      } else {
-        // Solid JPG background
-        await sharp(templateBuffer)
-          .composite([
-            { input: img1, left: pX, top: p1Y },
-            { input: img2, left: pX, top: p2Y },
-            { input: img3, left: pX, top: p3Y }
-          ])
-          .jpeg({ quality: 98, chromaSubsampling: '4:4:4' })
-          .toFile(tempFinalPath);
-      }
+      // Kanvas dasar putih bersih 1200 x 3600
+      const baseCanvas = await sharp({
+        create: {
+          width: TEMPLATE_WIDTH,
+          height: TEMPLATE_HEIGHT,
+          channels: 3,
+          background: { r: 255, g: 255, b: 255 }
+        }
+      }).jpeg().toBuffer();
+
+      await sharp(baseCanvas)
+        .composite([
+          { input: img1, left: pX, top: p1Y },
+          { input: img2, left: pX, top: p2Y },
+          { input: img3, left: pX, top: p3Y },
+          { input: templateBuffer, left: 0, top: 0 }
+        ])
+        .jpeg({ quality: 98, chromaSubsampling: '4:4:4' })
+        .toFile(tempFinalPath);
     } else {
       // Fallback: Built-in SVG Y2K Dreamy background
       await sharp(Buffer.from(svgBackground))

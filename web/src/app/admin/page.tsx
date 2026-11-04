@@ -13,7 +13,9 @@ import {
   FileText,
   Info,
   Lock,
-  Layers
+  Layers,
+  Scissors,
+  Sparkles
 } from 'lucide-react';
 
 interface TemplateItem {
@@ -111,6 +113,33 @@ export default function AdminDashboard() {
       }
     } catch (err: any) {
       setMessage({ text: 'Terjadi kesalahan saat upload', type: 'error' });
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
+  const handleAutoPunch = async (templateId: string) => {
+    setUploadingId(templateId);
+    setMessage(null);
+
+    const formData = new FormData();
+    formData.append('action', 'punch');
+    formData.append('templateId', templateId);
+
+    try {
+      const res = await fetch('/api/admin/templates', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ text: data.message, type: 'success' });
+        await fetchTemplates();
+      } else {
+        setMessage({ text: data.error || 'Gagal melubangi template', type: 'error' });
+      }
+    } catch (err: any) {
+      setMessage({ text: 'Terjadi kesalahan saat melubangi template', type: 'error' });
     } finally {
       setUploadingId(null);
     }
@@ -422,6 +451,18 @@ export default function AdminDashboard() {
                       <span>{tpl.hasCustom ? 'Ganti Desain' : 'Upload Desain'}</span>
                     </button>
 
+                    {tpl.hasCustom && (
+                      <button
+                        onClick={() => handleAutoPunch(tpl.id)}
+                        disabled={uploadingId === tpl.id}
+                        className="text-xs font-medium text-amber-300 hover:text-amber-200 bg-amber-950/40 hover:bg-amber-900/50 border border-amber-800/60 py-2 px-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                        title="Otomatis standarkan ke 1200x3600 & lubangi 3 kotak foto transparan"
+                      >
+                        <Scissors size={13} />
+                        <span>Lubangi</span>
+                      </button>
+                    )}
+
                     {(!tpl.isBuiltin || tpl.hasCustom) && (
                       <button
                         onClick={() => handleDelete(tpl)}
@@ -447,35 +488,44 @@ export default function AdminDashboard() {
               </div>
 
               <div className="space-y-3.5 text-xs">
+                <div className="bg-emerald-950/40 border border-emerald-800/50 rounded-lg p-3 text-emerald-300">
+                  <p className="font-semibold mb-1 flex items-center gap-1.5 text-emerald-300">
+                    <Sparkles size={14} /> Otomatis Standar & Lubang Bolong
+                  </p>
+                  <p className="text-[11px] text-emerald-400/90 leading-relaxed">
+                    Apapun desain template yang Anda masukkan (dari Canva, Photoshop, JPG maupun PNG ukuran berapa saja), sistem akan <strong>langsung mengubahnya ke ukuran standar 1200 × 3600 px</strong> dan <strong>3 kotak foto langsung dilubangi transparan</strong> secara otomatis!
+                  </p>
+                </div>
+
                 <div>
-                  <span className="text-zinc-500 block mb-1">Ukuran Kanvas (Strip 2x6)</span>
+                  <span className="text-zinc-500 block mb-1">Ukuran Standar Cetak Ultra-HD</span>
                   <div className="font-mono text-zinc-200 bg-zinc-950 px-2.5 py-1.5 rounded border border-zinc-800 flex items-center justify-between">
-                    <span>600 × 1800 px</span>
-                    <span className="text-[10px] text-zinc-500">Rasio 1:3</span>
+                    <span>1200 × 3600 px</span>
+                    <span className="text-[10px] text-emerald-400">Rasio 1:3 • 600 DPI</span>
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-zinc-500 block mb-1">Format Berkas</span>
+                  <span className="text-zinc-500 block mb-1">Format Berkas Diterima</span>
                   <div className="text-zinc-200 bg-zinc-950 px-2.5 py-1.5 rounded border border-zinc-800 flex items-center justify-between">
-                    <span className="font-medium text-emerald-400">PNG Transparan</span>
-                    <span className="text-[10px] font-mono text-zinc-500">300 DPI</span>
+                    <span className="font-medium text-emerald-400">PNG / JPG (Bebas)</span>
+                    <span className="text-[10px] font-mono text-zinc-500">Auto-convert</span>
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-zinc-500 block mb-1">Ukuran 3 Lubang Foto</span>
+                  <span className="text-zinc-500 block mb-1">Ukuran 3 Lubang Foto (Otomatis)</span>
                   <div className="font-mono text-zinc-200 bg-zinc-950 px-2.5 py-1.5 rounded border border-zinc-800">
-                    500 × 333 px
+                    960 × 750 px (Radius 28px)
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-zinc-500 block mb-1">Koordinat Vertikal (Y) Slot:</span>
+                  <span className="text-zinc-500 block mb-1">Posisi Vertikal 3 Lubang (Otomatis):</span>
                   <div className="font-mono text-[11px] text-zinc-400 bg-zinc-950 p-2.5 rounded border border-zinc-800 space-y-1">
-                    <div className="flex justify-between"><span>Slot 1 (Atas)</span><span className="text-zinc-200">Y: 250 px</span></div>
-                    <div className="flex justify-between"><span>Slot 2 (Tengah)</span><span className="text-zinc-200">Y: 633 px</span></div>
-                    <div className="flex justify-between"><span>Slot 3 (Bawah)</span><span className="text-zinc-200">Y: 1016 px</span></div>
+                    <div className="flex justify-between"><span>Slot 1 (Atas)</span><span className="text-zinc-200">Y: 908 px</span></div>
+                    <div className="flex justify-between"><span>Slot 2 (Tengah)</span><span className="text-zinc-200">Y: 1746 px</span></div>
+                    <div className="flex justify-between"><span>Slot 3 (Bawah)</span><span className="text-zinc-200">Y: 2582 px</span></div>
                   </div>
                 </div>
               </div>
@@ -586,8 +636,9 @@ export default function AdminDashboard() {
                     className="border border-dashed border-zinc-700 hover:border-zinc-500 rounded-lg p-5 flex flex-col items-center justify-center text-center cursor-pointer bg-zinc-950/50 hover:bg-zinc-950 transition-colors"
                   >
                     <Upload size={20} className="text-zinc-400 mb-1.5" />
-                    <span className="text-xs font-medium text-zinc-200">Klik untuk memilih berkas</span>
-                    <span className="text-[11px] text-zinc-500 mt-0.5">Ukuran rekomendasi 600 × 1800 px (300 DPI)</span>
+                    <span className="text-xs font-medium text-zinc-200">Klik untuk memilih berkas desain frame</span>
+                    <span className="text-[11px] text-amber-400 mt-1 font-medium">✨ Otomatis diubah ke 1200 × 3600 px & 3 lubang foto langsung bolong!</span>
+                    <span className="text-[10px] text-zinc-500 mt-0.5">Bisa JPG/PNG langsung dari Canva atau Photoshop</span>
                   </div>
                 ) : (
                   <div className="border border-zinc-800 bg-zinc-950 rounded-lg p-3 flex items-center justify-between gap-3">
