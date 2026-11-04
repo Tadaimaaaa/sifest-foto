@@ -357,7 +357,7 @@ export default function PhotoboothKiosk() {
   const { socket, isConnected, session, countdown, isCapturing, isProcessing, isFilterSelecting, applyFilter, retakePhoto, sessionError, capturedPhotos, resetSession } = useSocket();
   const [retakeModalOpen, setRetakeModalOpen] = useState(false);
   const [step, setStep] = useState<'welcome' | 'payment' | 'qris_payment' | 'cash_verification' | 'template'>('welcome');
-  const [availableTemplates, setAvailableTemplates] = useState<Array<{ id: string; name: string; icon: string; file: string }>>(DEFAULT_TEMPLATES);
+  const [availableTemplates, setAvailableTemplates] = useState<Array<{ id: string; name: string; icon: string; file: string; holes?: Array<{ top: string; left: string; width: string; height: string }> }>>(DEFAULT_TEMPLATES);
   const [templateSelection, setTemplateSelection] = useState<string | null>(null);
   const [accessCode, setAccessCode] = useState('');
   const [isCompletedDismissed, setIsCompletedDismissed] = useState(false);
@@ -463,6 +463,7 @@ export default function PhotoboothKiosk() {
             name: t.name,
             icon: t.icon,
             file: t.url || `/templates/${t.id}.png?v=2`,
+            holes: t.holes,
           }))
         );
       }
@@ -470,6 +471,29 @@ export default function PhotoboothKiosk() {
       console.warn('Failed to fetch dynamic templates, using defaults:', e);
     }
   }, []);
+
+  const getSlotStyles = useCallback((tplId: string) => {
+    const activeTpl = availableTemplates.find(t => t.id === tplId);
+    if (activeTpl?.holes && activeTpl.holes.length === 3) {
+      return activeTpl.holes;
+    }
+
+    // SI FEST Layout: 3 foto di atas, judul di bawah (Y = 190, 1060, 1940)
+    if (tplId.includes('si-fest') || tplId.includes('sifest')) {
+      return [
+        { top: '5.28%', left: '8.33%', width: '83.33%', height: '19.44%' },
+        { top: '29.44%', left: '8.33%', width: '83.33%', height: '19.44%' },
+        { top: '53.89%', left: '8.33%', width: '83.33%', height: '19.44%' },
+      ];
+    }
+
+    // Classic / Y2K Layout: Judul di atas, 3 foto di bawah (Y = 908, 1746, 2582)
+    return [
+      { top: '25.2%', left: '10.0%', width: '80.0%', height: '20.8%' },
+      { top: '48.5%', left: '10.0%', width: '80.0%', height: '20.8%' },
+      { top: '71.7%', left: '10.0%', width: '80.0%', height: '20.8%' },
+    ];
+  }, [availableTemplates]);
 
   useEffect(() => {
     fetchAvailableTemplates();
@@ -756,6 +780,7 @@ export default function PhotoboothKiosk() {
     const normalizedTemplateId = (session.templateId || 'y2k-dreamy').toLowerCase().trim().replace(/\s+/g, '-');
     const templateUrl = `/templates/${normalizedTemplateId}.png?v=2`;
     const activeFilterCss = PHOTO_FILTERS.find(f => f.id === selectedFilter)?.css || 'none';
+    const slotStyles = getSlotStyles(normalizedTemplateId);
 
     // 1. FILTER SELECTION STUDIO (Muncul setelah 3 foto selesai dijepret)
     if (isFilterSelecting) {
@@ -775,7 +800,7 @@ export default function PhotoboothKiosk() {
               
               {/* Slot 1 */}
               <div 
-                style={{ top: '24.9%', left: '9.2%', width: '81.6%', height: '21.4%' }}
+                style={slotStyles[0]}
                 onClick={() => { if (!hasRetaken) setRetakeModalOpen(true); }}
                 className={`absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center transition-all ${!hasRetaken ? 'cursor-pointer hover:ring-2 hover:ring-yellow-400 group/slot1' : ''}`}
                 title={!hasRetaken ? "Klik untuk foto ulang frame ini" : undefined}
@@ -796,7 +821,7 @@ export default function PhotoboothKiosk() {
 
               {/* Slot 2 */}
               <div 
-                style={{ top: '48.2%', left: '9.2%', width: '81.6%', height: '21.4%' }}
+                style={slotStyles[1]}
                 onClick={() => { if (!hasRetaken) setRetakeModalOpen(true); }}
                 className={`absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center transition-all ${!hasRetaken ? 'cursor-pointer hover:ring-2 hover:ring-yellow-400 group/slot2' : ''}`}
                 title={!hasRetaken ? "Klik untuk foto ulang frame ini" : undefined}
@@ -817,7 +842,7 @@ export default function PhotoboothKiosk() {
 
               {/* Slot 3 */}
               <div 
-                style={{ top: '71.4%', left: '9.2%', width: '81.6%', height: '21.4%' }}
+                style={slotStyles[2]}
                 onClick={() => { if (!hasRetaken) setRetakeModalOpen(true); }}
                 className={`absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center transition-all ${!hasRetaken ? 'cursor-pointer hover:ring-2 hover:ring-yellow-400 group/slot3' : ''}`}
                 title={!hasRetaken ? "Klik untuk foto ulang frame ini" : undefined}
@@ -1075,7 +1100,7 @@ export default function PhotoboothKiosk() {
               
               {/* Slot Foto 1 (Atas: Bleed pas di belakang lubang frame) */}
               <div 
-                style={{ top: '24.9%', left: '9.2%', width: '81.6%', height: '21.4%' }}
+                style={slotStyles[0]}
                 className="absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center"
               >
                 {capturedPhotos[1] ? (
@@ -1102,7 +1127,7 @@ export default function PhotoboothKiosk() {
 
               {/* Slot Foto 2 (Tengah: Bleed pas di belakang lubang frame) */}
               <div 
-                style={{ top: '48.2%', left: '9.2%', width: '81.6%', height: '21.4%' }}
+                style={slotStyles[1]}
                 className="absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center"
               >
                 {capturedPhotos[2] ? (
@@ -1129,7 +1154,7 @@ export default function PhotoboothKiosk() {
 
               {/* Slot Foto 3 (Bawah: Bleed pas di belakang lubang frame) */}
               <div 
-                style={{ top: '71.4%', left: '9.2%', width: '81.6%', height: '21.4%' }}
+                style={slotStyles[2]}
                 className="absolute overflow-hidden rounded-xl bg-slate-900/50 flex items-center justify-center"
               >
                 {capturedPhotos[3] ? (

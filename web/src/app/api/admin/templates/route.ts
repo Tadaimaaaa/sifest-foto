@@ -60,6 +60,7 @@ export async function GET() {
         let ext = 'png';
         let updatedAt: string | null = null;
         let isHolesReady = false;
+        let detectedHoles: Array<{ top: string; left: string; width: string; height: string }> = [];
 
         try {
           const stat = await fs.stat(pngPath);
@@ -67,11 +68,19 @@ export async function GET() {
           ext = 'png';
           updatedAt = stat.mtime.toISOString();
 
-          // Deteksi apakah sudah memiliki 3 lubang transparan
+          // Deteksi apakah sudah memiliki 3 lubang transparan & koordinatnya
           try {
             const { data, info } = await sharp(pngPath).raw().toBuffer({ resolveWithObject: true });
             const holes = detectTransparentHoles(data, info.width, info.height);
             isHolesReady = holes.length === 3;
+            if (isHolesReady) {
+              detectedHoles = holes.map(h => ({
+                top: `${((h.y / info.height) * 100).toFixed(2)}%`,
+                left: `${((h.x / info.width) * 100).toFixed(2)}%`,
+                width: `${((h.width / info.width) * 100).toFixed(2)}%`,
+                height: `${((h.height / info.height) * 100).toFixed(2)}%`,
+              }));
+            }
           } catch {}
         } catch {
           try {
@@ -89,6 +98,7 @@ export async function GET() {
           isBuiltin: Boolean(tpl.isBuiltin),
           hasCustom,
           isHolesReady,
+          holes: detectedHoles,
           url: hasCustom ? `/templates/${tpl.id}.${ext}?t=${Date.now()}` : null,
           updatedAt,
         };
