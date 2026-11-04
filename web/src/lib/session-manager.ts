@@ -273,6 +273,13 @@ export class SessionManager {
         session.currentPhoto = i;
         session.updatedAt = new Date().toISOString();
         this.broadcast('session:updated', { session });
+
+        // Jeda napas 1.5 detik antar-foto:
+        // 1. Pengunjung bisa melihat preview foto yang baru dijepret di Kiosk
+        // 2. Buffer USB kamera Canon & digiCamControl mendingin dan LiveView stabil kembali
+        if (i < 3) {
+          await this.sleep(1500, signal);
+        }
       }
 
       let chosenFilter = 'normal';
