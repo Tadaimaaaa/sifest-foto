@@ -347,8 +347,13 @@ const TemplateCard = ({
 };
 
 const DEFAULT_TEMPLATES = [
-  { id: 'y2k-dreamy', name: 'Y2K Dreamy', icon: '✨', file: '/templates/y2k-dreamy.png?v=2' },
+  { id: 'si-fest', name: 'SI FEST', icon: '✨', file: '/templates/si-fest.png?v=2' },
+  { id: 'teddy-star', name: 'Teddy Star', icon: '🧸', file: '/templates/teddy-star.png?v=2' },
+  { id: 'sifest-mascot', name: 'SI FEST Mascot', icon: '🤖', file: '/templates/sifest-mascot.png?v=2' },
+  { id: 'playful-yellow', name: 'Playful Yellow', icon: '🎮', file: '/templates/playful-yellow.png?v=2' },
+  { id: 'vintage-phone', name: 'Vintage Phone', icon: '☎️', file: '/templates/vintage-phone.png?v=2' },
   { id: 'classic', name: 'Classic', icon: '📸', file: '/templates/classic.png?v=2' },
+  { id: 'y2k-dreamy', name: 'Y2K Dreamy', icon: '✨', file: '/templates/y2k-dreamy.png?v=2' },
   { id: 'futuristic', name: 'Futuristic', icon: '🚀', file: '/templates/futuristic.png?v=2' },
   { id: 'fun', name: 'Fun', icon: '🎈', file: '/templates/fun.png?v=2' },
 ];
@@ -478,20 +483,47 @@ export default function PhotoboothKiosk() {
       return activeTpl.holes;
     }
 
-    // SI FEST Layout: 3 foto di atas, judul di bawah (Y = 190, 1060, 1940)
-    if (tplId.includes('si-fest') || tplId.includes('sifest')) {
+    // Top-Title Layout: sifest-mascot, classic, y2k-dreamy (Judul di atas, 3 foto di bawah)
+    if (tplId.includes('mascot') || tplId.includes('classic') || tplId.includes('y2k') || tplId.includes('futuristic')) {
       return [
-        { top: '5.28%', left: '8.33%', width: '83.33%', height: '19.44%' },
-        { top: '29.44%', left: '8.33%', width: '83.33%', height: '19.44%' },
-        { top: '53.89%', left: '8.33%', width: '83.33%', height: '19.44%' },
+        { top: '29.5%', left: '12.0%', width: '76.0%', height: '17.0%' },
+        { top: '50.0%', left: '12.0%', width: '76.0%', height: '17.0%' },
+        { top: '70.6%', left: '12.0%', width: '76.0%', height: '17.0%' },
       ];
     }
 
-    // Classic / Y2K Layout: Judul di atas, 3 foto di bawah (Y = 908, 1746, 2582)
+    // Teddy Star (Oval frames)
+    if (tplId.includes('teddy')) {
+      return [
+        { top: '4.1%', left: '4.0%', width: '92.0%', height: '21.2%' },
+        { top: '30.5%', left: '4.0%', width: '92.0%', height: '21.2%' },
+        { top: '56.9%', left: '4.0%', width: '92.0%', height: '21.2%' },
+      ];
+    }
+
+    // Playful Yellow
+    if (tplId.includes('playful')) {
+      return [
+        { top: '5.6%', left: '4.0%', width: '92.0%', height: '21.2%' },
+        { top: '29.3%', left: '4.0%', width: '92.0%', height: '21.2%' },
+        { top: '52.6%', left: '4.0%', width: '92.0%', height: '20.3%' },
+      ];
+    }
+
+    // Vintage Phone
+    if (tplId.includes('vintage') || tplId.includes('phone')) {
+      return [
+        { top: '2.5%', left: '4.0%', width: '92.0%', height: '24.0%' },
+        { top: '29.8%', left: '4.0%', width: '92.0%', height: '23.6%' },
+        { top: '56.0%', left: '4.0%', width: '92.0%', height: '24.4%' },
+      ];
+    }
+
+    // Default SI FEST Layout: 3 foto di atas, judul di bawah (Y = 190, 1060, 1940)
     return [
-      { top: '25.2%', left: '10.0%', width: '80.0%', height: '20.8%' },
-      { top: '48.5%', left: '10.0%', width: '80.0%', height: '20.8%' },
-      { top: '71.7%', left: '10.0%', width: '80.0%', height: '20.8%' },
+      { top: '5.28%', left: '8.33%', width: '83.33%', height: '19.44%' },
+      { top: '29.44%', left: '8.33%', width: '83.33%', height: '19.44%' },
+      { top: '53.89%', left: '8.33%', width: '83.33%', height: '19.44%' },
     ];
   }, [availableTemplates]);
 

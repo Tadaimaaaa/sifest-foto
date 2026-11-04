@@ -1,14 +1,44 @@
 [
   {
-    "id": "y2k-dreamy",
-    "name": "Y2K Dreamy",
+    "id": "si-fest",
+    "name": "SI FEST",
     "icon": "✨",
-    "isBuiltin": true
+    "isBuiltin": false
+  },
+  {
+    "id": "teddy-star",
+    "name": "Teddy Star",
+    "icon": "🧸",
+    "isBuiltin": false
+  },
+  {
+    "id": "sifest-mascot",
+    "name": "SI FEST Mascot",
+    "icon": "🤖",
+    "isBuiltin": false
+  },
+  {
+    "id": "playful-yellow",
+    "name": "Playful Yellow",
+    "icon": "🎮",
+    "isBuiltin": false
+  },
+  {
+    "id": "vintage-phone",
+    "name": "Vintage Phone",
+    "icon": "☎️",
+    "isBuiltin": false
   },
   {
     "id": "classic",
     "name": "Classic",
     "icon": "📸",
+    "isBuiltin": true
+  },
+  {
+    "id": "y2k-dreamy",
+    "name": "Y2K Dreamy",
+    "icon": "✨",
     "isBuiltin": true
   },
   {
@@ -22,11 +52,5 @@
     "name": "Fun",
     "icon": "🎈",
     "isBuiltin": true
-  },
-  {
-    "id": "si-fest",
-    "name": "SI FEST",
-    "icon": "✨",
-    "isBuiltin": false
   }
 ]

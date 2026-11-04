@@ -12,8 +12,13 @@ interface TemplateItem {
 }
 
 const DEFAULT_TEMPLATES: TemplateItem[] = [
-  { id: 'y2k-dreamy', name: 'Y2K Dreamy', icon: '✨', isBuiltin: true },
+  { id: 'si-fest', name: 'SI FEST', icon: '✨', isBuiltin: false },
+  { id: 'teddy-star', name: 'Teddy Star', icon: '🧸', isBuiltin: false },
+  { id: 'sifest-mascot', name: 'SI FEST Mascot', icon: '🤖', isBuiltin: false },
+  { id: 'playful-yellow', name: 'Playful Yellow', icon: '🎮', isBuiltin: false },
+  { id: 'vintage-phone', name: 'Vintage Phone', icon: '☎️', isBuiltin: false },
   { id: 'classic', name: 'Classic', icon: '📸', isBuiltin: true },
+  { id: 'y2k-dreamy', name: 'Y2K Dreamy', icon: '✨', isBuiltin: true },
   { id: 'futuristic', name: 'Futuristic', icon: '🚀', isBuiltin: true },
   { id: 'fun', name: 'Fun', icon: '🎈', isBuiltin: true },
 ];
