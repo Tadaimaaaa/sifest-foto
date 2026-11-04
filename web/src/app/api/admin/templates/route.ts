@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-import { autoStandardizeAndPunchTemplate } from '@/lib/template-processor';
+import sharp from 'sharp';
+import { autoStandardizeAndPunchTemplate, detectTransparentHoles } from '@/lib/template-processor';
 
 interface TemplateItem {
   id: string;
@@ -58,12 +59,20 @@ export async function GET() {
         let hasCustom = false;
         let ext = 'png';
         let updatedAt: string | null = null;
+        let isHolesReady = false;
 
         try {
           const stat = await fs.stat(pngPath);
           hasCustom = true;
           ext = 'png';
           updatedAt = stat.mtime.toISOString();
+
+          // Deteksi apakah sudah memiliki 3 lubang transparan
+          try {
+            const { data, info } = await sharp(pngPath).raw().toBuffer({ resolveWithObject: true });
+            const holes = detectTransparentHoles(data, info.width, info.height);
+            isHolesReady = holes.length === 3;
+          } catch {}
         } catch {
           try {
             const stat = await fs.stat(jpgPath);
@@ -79,6 +88,7 @@ export async function GET() {
           ...tpl,
           isBuiltin: Boolean(tpl.isBuiltin),
           hasCustom,
+          isHolesReady,
           url: hasCustom ? `/templates/${tpl.id}.${ext}?t=${Date.now()}` : null,
           updatedAt,
         };
@@ -96,6 +106,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const action = formData.get('action') as string | null;
     let templateId = (formData.get('templateId') as string | null)?.trim();
+    const layout = (formData.get('layout') as string | null)?.trim();
     const name = (formData.get('name') as string | null)?.trim();
     const icon = (formData.get('icon') as string | null)?.trim() || '🎨';
     const file = formData.get('file') as File | null;
@@ -118,7 +129,10 @@ export async function POST(req: NextRequest) {
         await fs.access(jpgPath);
       }
 
-      await autoStandardizeAndPunchTemplate(srcPath, pngPath, { forcePunch: true });
+      await autoStandardizeAndPunchTemplate(srcPath, pngPath, { 
+        forcePunch: true,
+        layout: (layout === 'top-title' || layout === 'bottom-title') ? layout : undefined,
+      });
 
       // Hapus file jpg lama jika ada agar bersih
       try {

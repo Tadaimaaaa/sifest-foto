@@ -384,6 +384,7 @@ export default function PhotoboothKiosk() {
   const [isStarting, setIsStarting] = useState(false);
   const [printStatus, setPrintStatus] = useState<'IDLE'|'PENDING'|'PRINTING'|'COMPLETED'|'FAILED'>('IDLE');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+  const [printLayoutMode, setPrintLayoutMode] = useState<'8-slots' | '6-slots'>('8-slots');
   const [selectedPrintSlots, setSelectedPrintSlots] = useState<number[]>([1]);
   const [isFullCenterPrint, setIsFullCenterPrint] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -615,7 +616,8 @@ export default function PhotoboothKiosk() {
     setIsPrintModalOpen(false);
     setPrintStatus('PENDING');
     try {
-      const slotsToSend = slotsArg || (isFullCenterPrint ? 'center' : selectedPrintSlots.join(','));
+      const prefix = printLayoutMode === '6-slots' ? '6-' : '8-';
+      const slotsToSend = slotsArg || (isFullCenterPrint ? 'center' : `${prefix}${selectedPrintSlots.join(',')}`);
       const res = await fetch(`/api/print/${session.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -681,6 +683,7 @@ export default function PhotoboothKiosk() {
 
   // Dynamic tunnel URL from backend config (saved in storage/tunnel-url.txt)
   const [tunnelUrl, setTunnelUrl] = useState<string>('');
+  const [localIp, setLocalIp] = useState<string>('');
   const publicBaseUrl = process.env.NEXT_PUBLIC_PHOTO_BASE_URL;
 
   const refreshTunnelConfig = useCallback(async () => {
@@ -689,6 +692,9 @@ export default function PhotoboothKiosk() {
       const data = await res.json();
       if (data?.tunnelUrl && !data.tunnelUrl.includes('api.trycloudflare.com')) {
         setTunnelUrl(data.tunnelUrl);
+      }
+      if (data?.localIp) {
+        setLocalIp(data.localIp);
       }
     } catch (e) {}
   }, []);
@@ -1238,10 +1244,12 @@ export default function PhotoboothKiosk() {
   // Result State
   if (!isCompletedDismissed && session && session.status === 'completed') {
     const downloadToken = (session as any).downloadToken;
-    const rawBaseUrl = (tunnelUrl && !tunnelUrl.includes('api.trycloudflare.com'))
+    const rawBaseUrl = (tunnelUrl && !tunnelUrl.includes('api.trycloudflare.com') && !tunnelUrl.includes('localhost'))
       ? tunnelUrl
-      : (publicBaseUrl && !publicBaseUrl.includes('api.trycloudflare.com'))
+      : (publicBaseUrl && !publicBaseUrl.includes('api.trycloudflare.com') && !publicBaseUrl.includes('localhost'))
       ? publicBaseUrl
+      : (localIp && localIp !== 'localhost' && localIp !== '127.0.0.1')
+      ? `http://${localIp}:3000`
       : (typeof window !== 'undefined' ? window.location.origin : '');
     const activeBaseUrl = rawBaseUrl;
     const qrUrl = (activeBaseUrl && downloadToken) ? `${activeBaseUrl}/photo/${downloadToken}` : null;
@@ -1286,9 +1294,17 @@ export default function PhotoboothKiosk() {
                     </p>
                   </div>
                 </div>
-                {(activeBaseUrl.includes('localhost') || activeBaseUrl.includes('127.0.0.1')) && (
+                {activeBaseUrl.includes('trycloudflare.com') ? (
+                  <p className="text-xs text-emerald-200 bg-emerald-950/60 border border-emerald-400/40 px-3 py-1.5 rounded-xl font-semibold flex items-center gap-1.5">
+                    🌐 Cloud Online Aktif: Pengunjung bisa download langsung dari jaringan internet HP masing-masing!
+                  </p>
+                ) : (activeBaseUrl.includes('192.168.') || activeBaseUrl.includes('10.') || activeBaseUrl.includes('172.')) ? (
+                  <p className="text-xs text-sky-200 bg-sky-950/60 border border-sky-400/40 px-3 py-1.5 rounded-xl font-semibold flex items-center gap-1.5">
+                    📶 WiFi Lokal Siap: Pastikan HP pengunjung terhubung ke WiFi / Hotspot yang sama dengan laptop ini.
+                  </p>
+                ) : (activeBaseUrl.includes('localhost') || activeBaseUrl.includes('127.0.0.1')) && (
                   <p className="text-xs text-amber-200 bg-amber-900/60 border border-amber-400/40 px-3 py-1.5 rounded-xl font-semibold">
-                    ⚠️ Cloudflare Tunnel belum terdeteksi. Pastikan file <b>JALANKAN-HARI-H.bat</b> sedang berjalan di laptop agar HP pengunjung bisa download.
+                    ⚠️ Cloudflare Tunnel offline. Hubungkan laptop dan HP pengunjung ke WiFi/Hotspot yang sama agar QR Code dapat dibuka.
                   </p>
                 )}
               </div>
@@ -1360,24 +1376,61 @@ export default function PhotoboothKiosk() {
                     </button>
                   </div>
 
-                  <p className="text-white/80 text-xs md:text-sm mb-4 text-center leading-relaxed">
-                    Kertas A4 muat <b className="text-yellow-300">8 strip foto</b> (4 atas × 4 bawah). Sentuh bagian kosong pada kertas Anda agar kertas foto dapat dihemat dan dipakai ulang!
+                  {/* Pilihan Mode Tata Letak Kertas A4 */}
+                  <div className="flex bg-white/10 p-1 rounded-xl gap-1 mb-3 w-full border border-white/20">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPrintLayoutMode('8-slots');
+                        setSelectedPrintSlots([1]);
+                        setIsFullCenterPrint(false);
+                      }}
+                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-black transition-all ${
+                        printLayoutMode === '8-slots'
+                          ? 'bg-emerald-500 text-white shadow-md'
+                          : 'text-white/70 hover:text-white'
+                      }`}
+                    >
+                      4 Atas × 4 Bawah (8 Slot)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPrintLayoutMode('6-slots');
+                        setSelectedPrintSlots([1]);
+                        setIsFullCenterPrint(false);
+                      }}
+                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-black transition-all ${
+                        printLayoutMode === '6-slots'
+                          ? 'bg-emerald-500 text-white shadow-md'
+                          : 'text-white/70 hover:text-white'
+                      }`}
+                    >
+                      3 Atas × 3 Bawah (6 Bagian)
+                    </button>
+                  </div>
+
+                  <p className="text-white/80 text-xs md:text-sm mb-3 text-center leading-relaxed">
+                    Kertas A4 muat <b className="text-yellow-300">{printLayoutMode === '8-slots' ? '8 strip foto' : '6 strip foto'}</b>. Pilih kotak nomor yang masih kosong di kertas Anda agar kertas foto dapat dihemat dan dipakai ulang!
                   </p>
 
-                  {/* Simulasi Kertas A4 Interaktif: 4 Atas & 4 Bawah */}
+                  {/* Simulasi Kertas A4 Interaktif */}
                   <div className="w-full bg-slate-100 text-slate-800 p-3 rounded-2xl shadow-inner border border-slate-300 mb-4">
                     <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 px-1">
-                      <span>📄 Kertas A4 (4 Atas × 4 Bawah = 8 Bagian)</span>
+                      <span>📄 Kertas A4 ({printLayoutMode === '8-slots' ? '4 Atas × 4 Bawah = 8 Bagian' : '3 Atas × 3 Bawah = 6 Bagian'})</span>
                       <span className="text-emerald-600 font-extrabold">
                         {isFullCenterPrint ? 'Mode 1 Strip Besar' : `${selectedPrintSlots.length} Bagian Dipilih`}
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-4 gap-2 p-2 bg-white rounded-xl border-2 border-dashed border-slate-300">
-                      {[1, 2, 3, 4, 5, 6, 7, 8].map((slotNum) => {
+                    <div className={`grid gap-2 p-2 bg-white rounded-xl border-2 border-dashed border-slate-300 ${
+                      printLayoutMode === '8-slots' ? 'grid-cols-4' : 'grid-cols-3'
+                    }`}>
+                      {(printLayoutMode === '8-slots' ? [1, 2, 3, 4, 5, 6, 7, 8] : [1, 2, 3, 4, 5, 6]).map((slotNum) => {
                         const isSelected = selectedPrintSlots.includes(slotNum) && !isFullCenterPrint;
-                        const posText = slotNum <= 4 ? 'Atas' : 'Bawah';
-                        const colNum = ((slotNum - 1) % 4) + 1;
+                        const maxInRow = printLayoutMode === '8-slots' ? 4 : 3;
+                        const posText = slotNum <= maxInRow ? 'Atas' : 'Bawah';
+                        const colNum = ((slotNum - 1) % maxInRow) + 1;
 
                         return (
                           <button

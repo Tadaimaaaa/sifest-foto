@@ -50,29 +50,51 @@ public class NativePhotoPrinter {
                 doc.PrinterSettings.Copies = (short)copies;
             }
 
-            // Temukan ukuran A4
+            // Temukan ukuran kertas A4 resmi dari driver printer
+            PaperSize a4Size = null;
             foreach (PaperSize ps in doc.PrinterSettings.PaperSizes) {
                 if (ps.Kind == PaperKind.A4 || ps.PaperName.IndexOf("A4", StringComparison.OrdinalIgnoreCase) >= 0) {
-                    doc.DefaultPageSettings.PaperSize = ps;
+                    a4Size = ps;
                     break;
                 }
             }
 
-            doc.DefaultPageSettings.Color = true;
-            doc.DefaultPageSettings.Margins = new Margins(0, 0, 0, 0);
+            if (a4Size != null) {
+                doc.DefaultPageSettings.PaperSize = a4Size;
+                doc.PrinterSettings.DefaultPageSettings.PaperSize = a4Size;
+            }
+
+            // Margin aman 16 (0.16 inci = ~4mm) untuk mencegah penolakan hardware margin pada Epson L360
+            Margins safeMargins = new Margins(16, 16, 16, 16);
+            doc.DefaultPageSettings.Margins = safeMargins;
+            doc.PrinterSettings.DefaultPageSettings.Margins = safeMargins;
             doc.OriginAtMargins = false;
 
-            // Parse slots
+            // Pastikan Mode Warna & Kualitas Tinggi (HD)
+            doc.DefaultPageSettings.Color = true;
+            doc.PrinterSettings.DefaultPageSettings.Color = true;
+            foreach (PrinterResolution pr in doc.PrinterSettings.PrinterResolutions) {
+                if (pr.Kind == PrinterResolutionKind.High) {
+                    doc.DefaultPageSettings.PrinterResolution = pr;
+                    doc.PrinterSettings.DefaultPageSettings.PrinterResolution = pr;
+                    break;
+                }
+            }
+
+            // Parse layout & slot
             List<int> slotList = new List<int>();
             bool isCenter = false;
+            bool is6Slots = slots.StartsWith("6-") || slots.Contains("layout6");
 
             if (string.Equals(slots, "center", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(slots, "full", StringComparison.OrdinalIgnoreCase)) {
                 isCenter = true;
             } else if (string.Equals(slots, "all", StringComparison.OrdinalIgnoreCase)) {
-                for (int i = 1; i <= 8; i++) slotList.Add(i);
+                int maxSlots = is6Slots ? 6 : 8;
+                for (int i = 1; i <= maxSlots; i++) slotList.Add(i);
             } else {
-                string[] parts = slots.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                string cleanSlots = slots.Replace("6-", "").Replace("8-", "");
+                string[] parts = cleanSlots.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
                 foreach (string p in parts) {
                     int num;
                     if (int.TryParse(p.Trim(), out num) && num >= 1 && num <= 8) {
@@ -84,7 +106,9 @@ public class NativePhotoPrinter {
 
             using (Image image = Image.FromFile(imagePath)) {
                 doc.PrintPage += (sender, ev) => {
+                    // Batas halaman dengan margin aman dari tepi fisik kertas A4
                     Rectangle bounds = ev.PageBounds;
+                    bounds.Inflate(-16, -16);
 
                     ev.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
                     ev.Graphics.SmoothingMode = SmoothingMode.HighQuality;
@@ -109,10 +133,46 @@ public class NativePhotoPrinter {
                         }
 
                         ev.Graphics.DrawImage(image, posX, posY, drawWidth, drawHeight);
+                    } else if (is6Slots) {
+                        // 6 Slot: 3 Kolom x 2 Baris pada A4
+                        int cols = 3;
+                        int rows = 2;
+                        int slotW = bounds.Width / cols;
+                        int slotH = bounds.Height / rows;
+
+                        int padX = 8;
+                        int padY = 12;
+                        int availW = slotW - (padX * 2);
+                        int availH = slotH - (padY * 2);
+
+                        float imgRatio = (float)image.Width / (float)image.Height;
+                        float slotRatio = (float)availW / (float)availH;
+
+                        foreach (int slotNum in slotList) {
+                            if (slotNum > 6) continue;
+                            int row = (slotNum - 1) / cols;
+                            int col = (slotNum - 1) % cols;
+
+                            int slotX = bounds.X + (col * slotW);
+                            int slotY = bounds.Y + (row * slotH);
+
+                            int drawW = availW;
+                            int drawH = availH;
+                            int posX = slotX + padX;
+                            int posY = slotY + padY;
+
+                            if (imgRatio > slotRatio) {
+                                drawH = (int)(availW / imgRatio);
+                                posY += (availH - drawH) / 2;
+                            } else {
+                                drawW = (int)(availH * imgRatio);
+                                posX += (availW - drawW) / 2;
+                            }
+
+                            ev.Graphics.DrawImage(image, posX, posY, drawW, drawH);
+                        }
                     } else {
-                        // 8 Slot: 4 Kolom x 2 Baris pada A4
-                        // Baris 1: Slot 1, 2, 3, 4
-                        // Baris 2: Slot 5, 6, 7, 8
+                        // 8 Slot: 4 Kolom x 2 Baris pada A4 (4 Atas x 4 Bawah)
                         int cols = 4;
                         int rows = 2;
                         int slotW = bounds.Width / cols;
@@ -154,7 +214,8 @@ public class NativePhotoPrinter {
                 };
 
                 doc.Print();
-                System.Threading.Thread.Sleep(2000);
+                // Beri jeda 5 detik agar GDI spooler Windows selesai mentransfer seluruh byte raster ke driver
+                System.Threading.Thread.Sleep(5000);
             }
         }
     }
@@ -166,5 +227,23 @@ if (-not ([System.Management.Automation.PSTypeName]'NativePhotoPrinter').Type) {
 }
 
 [NativePhotoPrinter]::Print($ImagePath, $PrinterName, $Copies, $Slots)
+
+# Tunggu hingga spooler Windows selesai mendistribusikan job ke printer (maksimal 15 detik)
+try {
+    Add-Type -AssemblyName System.Printing -ErrorAction SilentlyContinue
+    $ps = New-Object System.Printing.LocalPrintServer
+    $pq = $ps.GetPrintQueue($PrinterName)
+    $spoolWait = 0
+    while ($spoolWait -lt 12) {
+        $pq.Refresh()
+        if ($pq.NumberOfJobs -eq 0) {
+            break
+        }
+        Start-Sleep -Milliseconds 1000
+        $spoolWait++
+    }
+} catch {
+    Start-Sleep -Seconds 3
+}
 
 Write-Output "SUCCESS: Printed to $PrinterName (Slots: $Slots, Copies: $Copies)"

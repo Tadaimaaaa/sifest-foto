@@ -118,13 +118,14 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleAutoPunch = async (templateId: string) => {
+  const handleAutoPunch = async (templateId: string, layout: 'bottom-title' | 'top-title' = 'bottom-title') => {
     setUploadingId(templateId);
     setMessage(null);
 
     const formData = new FormData();
     formData.append('action', 'punch');
     formData.append('templateId', templateId);
+    formData.append('layout', layout);
 
     try {
       const res = await fetch('/api/admin/templates', {
@@ -364,7 +365,7 @@ export default function AdminDashboard() {
                       </div>
                     </div>
 
-                    <div>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
                       {!tpl.isBuiltin ? (
                         <span className="inline-flex items-center text-[11px] font-medium text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
                           Kustom
@@ -376,6 +377,12 @@ export default function AdminDashboard() {
                       ) : (
                         <span className="inline-flex items-center text-[11px] font-medium text-zinc-400 bg-zinc-800/80 border border-zinc-700/50 px-2 py-0.5 rounded-md">
                           Bawaan
+                        </span>
+                      )}
+
+                      {(tpl as any).isHolesReady && (
+                        <span className="inline-flex items-center text-[10px] font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-500/40 px-2 py-0.5 rounded-md" title="Template ini sudah memiliki 3 lubang foto transparan sempurna">
+                          ✅ 3 Lubang Siap
                         </span>
                       )}
                     </div>
@@ -452,15 +459,25 @@ export default function AdminDashboard() {
                     </button>
 
                     {tpl.hasCustom && (
-                      <button
-                        onClick={() => handleAutoPunch(tpl.id)}
-                        disabled={uploadingId === tpl.id}
-                        className="text-xs font-medium text-amber-300 hover:text-amber-200 bg-amber-950/40 hover:bg-amber-900/50 border border-amber-800/60 py-2 px-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
-                        title="Otomatis standarkan ke 1200x3600 & lubangi 3 kotak foto transparan"
-                      >
-                        <Scissors size={13} />
-                        <span>Lubangi</span>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleAutoPunch(tpl.id, 'bottom-title')}
+                          disabled={uploadingId === tpl.id}
+                          className="text-[11px] font-bold text-amber-300 hover:text-amber-200 bg-amber-950/60 hover:bg-amber-900/60 border border-amber-700/60 py-2 px-2 rounded-lg flex items-center justify-center gap-1 transition-colors"
+                          title="Lubangi 3 frame di Atas & Tengah (Model SI FEST - Judul di Bawah)"
+                        >
+                          <Scissors size={12} />
+                          <span>Lubangi SI FEST</span>
+                        </button>
+                        <button
+                          onClick={() => handleAutoPunch(tpl.id, 'top-title')}
+                          disabled={uploadingId === tpl.id}
+                          className="text-[11px] font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 py-2 px-2 rounded-lg flex items-center justify-center gap-1 transition-colors"
+                          title="Lubangi 3 frame di Bawah (Model Classic - Judul di Atas)"
+                        >
+                          <span>Classic</span>
+                        </button>
+                      </div>
                     )}
 
                     {(!tpl.isBuiltin || tpl.hasCustom) && (

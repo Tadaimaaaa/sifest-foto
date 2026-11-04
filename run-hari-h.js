@@ -206,7 +206,9 @@ async function main() {
     printReadyBanner(null);
   }, 6000);
 
-  if (cloudflaredBin) {
+  let tunnelRetries = 0;
+  function startTunnel() {
+    if (!cloudflaredBin || tunnelFound) return;
     try {
       execSync('taskkill /F /IM cloudflared.exe', { stdio: 'ignore' });
     } catch (e) {}
@@ -247,6 +249,7 @@ async function main() {
             }
           } catch (e) {}
 
+          console.log(`   🌐 Cloudflare Tunnel Terhubung: ${liveTunnelUrl}`);
           printReadyBanner(liveTunnelUrl);
         }
       }
@@ -257,10 +260,20 @@ async function main() {
 
     tunnelProcess.on('exit', (code) => {
       if (!tunnelFound) {
-        console.log(`   ℹ️ Cloudflare tunnel offline/selesai (code ${code}). Melanjutkan dalam mode WiFi Lokal.`);
-        printReadyBanner(null);
+        if (tunnelRetries < 2) {
+          tunnelRetries++;
+          console.log(`   ⏳ Cloudflare tunnel mencoba menyambung kembali dalam 5 detik (Percobaan ${tunnelRetries}/2)...`);
+          setTimeout(startTunnel, 5000);
+        } else {
+          console.log(`   ℹ️ Cloudflare tunnel offline. Sistem tetap berjalan sempurna menggunakan WiFi Lokal.`);
+          printReadyBanner(null);
+        }
       }
     });
+  }
+
+  if (cloudflaredBin) {
+    startTunnel();
   } else {
     printReadyBanner(null);
   }

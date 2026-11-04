@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,32 @@ function getStorageDir() {
     current = path.dirname(current);
   }
   return path.resolve(process.cwd(), '../storage');
+}
+
+function getLocalIp(): string {
+  const interfaces = os.networkInterfaces();
+  const candidates: Array<{ ip: string; isWifi: boolean }> = [];
+
+  for (const name of Object.keys(interfaces)) {
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('virtual') || lowerName.includes('vbox') || lowerName.includes('vmware') || lowerName.includes('wsl')) {
+      continue;
+    }
+
+    const ifaces = interfaces[name] || [];
+    for (const iface of ifaces) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        if (iface.address.startsWith('192.168.56.') || iface.address.startsWith('169.254.')) continue;
+        const isWifi = lowerName.includes('wi-fi') || lowerName.includes('wifi') || lowerName.includes('wireless') || lowerName.includes('wlan');
+        candidates.push({ ip: iface.address, isWifi });
+      }
+    }
+  }
+
+  const wifi = candidates.find(c => c.isWifi);
+  if (wifi) return wifi.ip;
+  if (candidates.length > 0) return candidates[0].ip;
+  return 'localhost';
 }
 
 export async function GET() {
@@ -44,9 +71,11 @@ export async function GET() {
   }
 
   const price = Number(process.env.PHOTO_PRICE_IDR || '5000');
+  const localIp = getLocalIp();
 
   return NextResponse.json({
     tunnelUrl,
+    localIp,
     price,
   });
 }
