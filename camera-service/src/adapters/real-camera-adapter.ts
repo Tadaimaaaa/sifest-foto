@@ -222,40 +222,24 @@ export class RealCameraAdapter implements CameraAdapter {
       } catch {}
       await new Promise((r) => setTimeout(r, 150));
 
-      // 2. TRIGGER SHUTTER!
-      // Kirim Capture_NoAf (bebas dari hunting fokus) dan Capture secara simultan
+      // 2. TRIGGER SHUTTER TUNGGAL (Hanya kirim 1 perintah agar kamera tidak antre jepret ganda)
       triggerCapture(1).catch(() => {});
-      try {
-        const noAfReq = http.get('http://127.0.0.1:5513/?CMD=Capture_NoAf', (res) => res.resume());
-        noAfReq.on('error', () => {});
-      } catch {}
 
-      // 3. Polling sampai foto BARU selesai ditransfer dengan Smart Re-Trigger
+      // 3. Polling sampai foto BARU selesai ditransfer
       let imageBuffer: Buffer | null = null;
       let newFilename: string | null = null;
       const pollStart = Date.now();
-      let retriggered2 = false;
-      let retriggered3 = false;
+      let retriggered = false;
 
       while (Date.now() - pollStart < 8500) {
         const elapsed = Date.now() - pollStart;
 
-        // Smart Re-trigger 2 di detik 2.5 jika belum ada foto baru
-        if (elapsed > 2500 && !retriggered2) {
-          retriggered2 = true;
-          console.warn(`[RealCameraAdapter] ⚠️ Belum ada foto baru setelah 2.5 detik. Mengirim ulang trigger shutter (#2)...`);
+        // Re-trigger HANYA jika sudah lewat 5.5 detik (karena transfer normal Canon butuh 3.2 - 3.8s)
+        // Ini mencegah trigger ganda yang membuat kamera jepret sendiri di tengah countdown pose berikutnya!
+        if (elapsed > 5500 && !retriggered) {
+          retriggered = true;
+          console.warn(`[RealCameraAdapter] ⚠️ Belum ada foto baru setelah 5.5 detik. Mengirim ulang trigger shutter cadangan...`);
           triggerCapture(2).catch(() => {});
-          try {
-            const noAf = http.get('http://127.0.0.1:5513/?CMD=Capture_NoAf', (res) => res.resume());
-            noAf.on('error', () => {});
-          } catch {}
-        }
-
-        // Smart Re-trigger 3 di detik 5.0 jika masih belum ada foto baru
-        if (elapsed > 5000 && !retriggered3) {
-          retriggered3 = true;
-          console.warn(`[RealCameraAdapter] ⚠️ Belum ada foto baru setelah 5.0 detik. Mengirim ulang trigger shutter (#3)...`);
-          triggerCapture(3).catch(() => {});
         }
 
         const current = await httpGetDetails('http://127.0.0.1:5513/preview.jpg', 1200);
