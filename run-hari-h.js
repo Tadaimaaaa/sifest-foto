@@ -4,6 +4,9 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 
+// Alokasikan batas memori V8 Heap hingga 4096 MB (4 GB) agar proses kompilasi Next.js tidak crash OOM (Out of Memory)
+process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS || ''} --max-old-space-size=4096`.trim();
+
 console.clear();
 console.log('================================================================');
 console.log('       📸 SI-FEST 2026 PHOTOBOOTH SYSTEM - LAUNCHER HARI H      ');
@@ -140,10 +143,16 @@ async function main() {
 
   // 1. Start Camera Service (Port 3001)
   console.log('🚀 [2/4] Menyalakan Camera Service (Port 3001)...');
+  const nodeEnv = {
+    ...process.env,
+    NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --max-old-space-size=4096`.trim(),
+  };
+
   const cameraService = spawn('npm.cmd', ['run', 'dev'], {
     cwd: path.join(rootDir, 'camera-service'),
     stdio: 'inherit',
     shell: true,
+    env: nodeEnv,
   });
 
   cameraService.on('error', (err) => {
@@ -156,6 +165,7 @@ async function main() {
     cwd: path.join(rootDir, 'web'),
     stdio: 'inherit',
     shell: true,
+    env: nodeEnv,
   });
 
   webServer.on('error', (err) => {
