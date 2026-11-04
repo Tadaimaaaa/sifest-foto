@@ -347,6 +347,7 @@ const TemplateCard = ({
 };
 
 const DEFAULT_TEMPLATES = [
+  { id: 'si-fest', name: 'SI FEST', icon: '✨', file: '/templates/si-fest.png?v=2' },
   { id: 'sifest-starry', name: 'Starry Mascot', icon: '⭐', file: '/templates/sifest-starry.png?v=2' },
   { id: 'sifest-wave', name: 'Blue Wave', icon: '🔥', file: '/templates/sifest-wave.png?v=2' },
   { id: 'sifest-ocean', name: 'Ocean Yellow', icon: '🐬', file: '/templates/sifest-ocean.png?v=2' },
@@ -484,6 +485,15 @@ export default function PhotoboothKiosk() {
     const activeTpl = availableTemplates.find(t => t.id === tplId);
     if (activeTpl?.holes && activeTpl.holes.length === 3) {
       return activeTpl.holes;
+    }
+
+    // Original SI FEST (si-fest)
+    if (tplId === 'si-fest') {
+      return [
+        { top: '4.17%', left: '4.08%', width: '87.83%', height: '22.25%' },
+        { top: '29.42%', left: '8.17%', width: '83.92%', height: '20.44%' },
+        { top: '53.19%', left: '1.25%', width: '90.67%', height: '19.89%' },
+      ];
     }
 
     // Starry Mascot (sifest-starry)

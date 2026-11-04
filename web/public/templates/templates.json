@@ -1,5 +1,11 @@
 [
   {
+    "id": "si-fest",
+    "name": "SI FEST",
+    "icon": "✨",
+    "isBuiltin": false
+  },
+  {
     "id": "sifest-starry",
     "name": "Starry Mascot",
     "icon": "⭐",

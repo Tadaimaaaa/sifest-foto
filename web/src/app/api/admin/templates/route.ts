@@ -12,6 +12,7 @@ interface TemplateItem {
 }
 
 const DEFAULT_TEMPLATES: TemplateItem[] = [
+  { id: 'si-fest', name: 'SI FEST', icon: '✨', isBuiltin: false },
   { id: 'sifest-starry', name: 'Starry Mascot', icon: '⭐', isBuiltin: false },
   { id: 'sifest-wave', name: 'Blue Wave', icon: '🔥', isBuiltin: false },
   { id: 'sifest-ocean', name: 'Ocean Yellow', icon: '🐬', isBuiltin: false },
